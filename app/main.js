@@ -11,7 +11,9 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, "../frontend/build/index.html"));
+  const startUrl = path.join(__dirname, "frontend/build/index.html");
+  win.loadURL(`file://${startUrl}`);
+
 }
 
 app.whenReady().then(createWindow);

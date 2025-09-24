@@ -10,10 +10,8 @@ const app = express();
 app.use(express.json());
 
 // Firebase Admin init
-const serviceAccount = require("./serviceAccountKey.json");
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://dogsight-alert.firebaseio.com"
 });
 const db = admin.firestore();
