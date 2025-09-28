@@ -6,15 +6,15 @@ function App() {
   const [paired, setPaired] = useState(false);
   const [lineUserId, setLineUserId] = useState(null);
 
-  const handlePaired = (id) => {
+  const handlePaired = (lineId) => {
     setPaired(true);
-    setLineUserId(id);
+    setLineUserId(lineId);
     if (window.electronAPI) {
       window.electronAPI.sendPaired(); // Start backend + detection
     }
   };
 
-  return paired ? <HomePage lineUserId={lineUserId} /> : <PairPage onPaired={handlePaired} />;
+  return paired ? <HomePage lineUserId={lineUserId}/> : <PairPage onPaired={handlePaired} />;
 }
 
 export default App;

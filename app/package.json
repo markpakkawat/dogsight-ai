@@ -5,11 +5,26 @@
   "scripts": {
     "start": "electron ."
   },
+  "build": {
+    "files": [
+      "frontend/build/**",
+      "local-server/**",
+      "detection/**",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ]
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
     "electron": "^38.1.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.5.0"
   }
 }
