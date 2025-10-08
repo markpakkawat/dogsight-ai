@@ -2,16 +2,28 @@ import React, { useEffect, useState } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getAuth, signInWithCustomToken } from "firebase/auth";
 import { app } from "./firebase.js";
+import { v4 as uuidv4 } from "uuid";
 
 const BASE = process.env.REACT_APP_API_BASE;
 
 function PairPage({ onPaired }) {
   const [qrHtml, setQrHtml] = useState("");
 
+  // persistent deviceId per app install
+  const [deviceId] = useState(() => {
+    let id = localStorage.getItem("deviceId");
+    if (!id) {
+      id = uuidv4();
+      localStorage.setItem("deviceId", id);
+    }
+    return id;
+  });
   // Step 1: fetch QR
   useEffect(() => {
-    const url = `${BASE}/pair?ts=${Date.now()}`;
-    fetch(url, { headers: { "ngrok-skip-browser-warning": "true" } })
+    const url = `${BASE}/pair?deviceId=${encodeURIComponent(deviceId)}&ts=${Date.now()}`;
+    fetch(url, {
+      headers: { "ngrok-skip-browser-warning": "true" }, // ← avoid banner HTML
+    })
       .then((res) => res.text())
       .then((html) => {
         if (html && html.includes("<img")) setQrHtml(html);
@@ -22,15 +34,16 @@ function PairPage({ onPaired }) {
           `<p>⚠️ Error loading QR. Try this link: <a href="${url}" target="_blank" rel="noreferrer">Login with LINE</a></p>`
         )
       );
-  }, []);
+  }, [deviceId]);
 
   // Step 2: poll pairing
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${BASE}/check-paired?ts=${Date.now()}`, {
-          headers: { "ngrok-skip-browser-warning": "true" },
-        });
+        const res = await fetch(
+          `${BASE}/check-paired?deviceId=${encodeURIComponent(deviceId)}&ts=${Date.now()}`,
+          { headers: { "ngrok-skip-browser-warning": "true" } }
+        );
 
         const ct = res.headers.get("content-type") || "";
         if (!ct.includes("application/json")) {
@@ -67,14 +80,16 @@ function PairPage({ onPaired }) {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [onPaired]);
+  }, [deviceId, onPaired]);
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
       <h2>🐶 Pair your LINE account</h2>
       <p>Scan the QR code or click the login link below:</p>
       <div dangerouslySetInnerHTML={{ __html: qrHtml }} />
-      <p style={{ marginTop: 16, color: "#666" }}>Waiting for pairing confirmation...</p>
+      Waiting for pairing confirmation for device:
+        <br />
+        <code>{deviceId}</code>
     </div>
   );
 }

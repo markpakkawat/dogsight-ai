@@ -29,7 +29,9 @@ if (!LOGIN_CHANNEL_ID || !LOGIN_CHANNEL_SECRET || !CALLBACK_URL) {
 
 // Endpoint 1: Generate QR code for LINE login
 app.get("/pair", async (req, res) => {
-  const state = JSON.stringify({ ts: Date.now() }); // lightweight state
+  const { deviceId } = req.query;
+  if (!deviceId) return res.status(400).send("No deviceId provided");
+  const state = JSON.stringify({ deviceId });
   const loginUrl =
     "https://access.line.me/oauth2/v2.1/authorize" +
     `?response_type=code` +
@@ -39,10 +41,11 @@ app.get("/pair", async (req, res) => {
     `&scope=${encodeURIComponent("openid profile")}`;
 
   const qr = await QRCode.toDataURL(loginUrl);
-  console.log("🧭 /pair → loginUrl:", loginUrl);
+  console.log("🧭 /pair for deviceId:", deviceId);
 
   res.send(`
     <h2>Scan with LINE app or tap the link</h2>
+    <p>deviceId: <code>${deviceId}</code></p>
     <p><a href="${loginUrl}">🔗 Login link (debug)</a></p>
     <img src="${qr}" />
   `);
@@ -50,9 +53,14 @@ app.get("/pair", async (req, res) => {
 
 // Endpoint 2: Callback from LINE after login
 app.get("/pair/callback", async (req, res) => {
-  const { code, error, error_description } = req.query;
+  const { code, state, error, error_description } = req.query;
   if (error) return res.status(400).send(`LINE error: ${error} - ${error_description || ""}`);
-
+  let deviceId = null;
+  try {
+    deviceId = JSON.parse(state).deviceId;
+  } catch {
+    console.warn("No deviceId in state");
+  }
   try {
     // Exchange code for access token
     const tokenRes = await axios.post(
@@ -80,6 +88,7 @@ app.get("/pair/callback", async (req, res) => {
     await db.collection("users").doc(lineUserId).set(
       {
         lineUserId,
+        deviceId,
         paired: true,
         alertEnabled: false,
         polygon: [],
@@ -99,10 +108,13 @@ app.get("/pair/callback", async (req, res) => {
 // Endpoint 3: Check if any user is paired (simplified)
 app.get("/check-paired", async (req, res) => {
   try {
-    // For demo: return the most recently paired user
+    const { deviceId } = req.query;
+    if (!deviceId) {
+      return res.status(400).json({ paired: false, error: "No deviceId provided" });
+    }
     const snapshot = await db
       .collection("users")
-      .orderBy("lastPaired", "desc")
+      .where("deviceId", "==", deviceId)
       .limit(1)
       .get();
 
