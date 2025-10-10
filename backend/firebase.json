@@ -24,5 +24,23 @@
       "enabled": true,
       "port": 4000
     }
+  },
+  "hosting": {
+    "public": "hosting",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/watch.html"
+      }
+    ],
+    "headers": [{
+      "source": "**",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }]
   }
 }
