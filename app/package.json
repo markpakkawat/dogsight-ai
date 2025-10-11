@@ -23,8 +23,10 @@
     "electron": "^38.1.2"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "firebase": "^12.4.0",
     "firebase-admin": "^13.5.0"
   }
 }
