@@ -1,8 +1,9 @@
 // /app/frontend/src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { getDatabase } from "firebase/database";
 
 // Firebase config (from your Firebase Console → Project settings)
 const firebaseConfig = {
@@ -21,5 +22,15 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app);
+const rtdb = getDatabase(app);
 
-export { app, auth, db, functions };
+enableIndexedDbPersistence(db)
+  .catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Multiple tabs open, persistence enabled in first tab only');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Browser doesn\'t support persistence');
+    }
+  });
+
+export { app, auth, db, functions, rtdb };

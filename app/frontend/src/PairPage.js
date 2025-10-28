@@ -20,19 +20,22 @@ function PairPage({ onPaired }) {
   });
   // Step 1: fetch QR
   useEffect(() => {
-    const url = `${BASE}/pair?deviceId=${encodeURIComponent(deviceId)}&ts=${Date.now()}`;
+    const url = `${BASE}/pair?deviceId=${encodeURIComponent(deviceId)}`;
     fetch(url, {
-      headers: { "ngrok-skip-browser-warning": "true" }, // ← avoid banner HTML
+      headers: { "ngrok-skip-browser-warning": "true" },
     })
       .then((res) => res.text())
       .then((html) => {
-        if (html && html.includes("<img")) setQrHtml(html);
-        else setQrHtml(`<a href="${url}" target="_blank" rel="noreferrer">Click here to login with LINE</a>`);
+        if (html && html.includes("<img")) {
+          // Extract just the img tag
+          const imgMatch = html.match(/<img[^>]+>/);
+          setQrHtml(imgMatch ? imgMatch[0] : '<p>⚠️ Error loading QR code.</p>');
+        } else {
+          setQrHtml('<p>⚠️ Error loading QR code. Please try again.</p>');
+        }
       })
       .catch(() =>
-        setQrHtml(
-          `<p>⚠️ Error loading QR. Try this link: <a href="${url}" target="_blank" rel="noreferrer">Login with LINE</a></p>`
-        )
+        setQrHtml('<p>⚠️ Error loading QR code. Please try again.</p>')
       );
   }, [deviceId]);
 
@@ -85,11 +88,11 @@ function PairPage({ onPaired }) {
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
       <h2>🐶 Pair your LINE account</h2>
-      <p>Scan the QR code or click the login link below:</p>
-      <div dangerouslySetInnerHTML={{ __html: qrHtml }} />
-      Waiting for pairing confirmation for device:
-        <br />
+      <p>Scan this QR code with LINE to connect:</p>
+      <div style={{ marginTop: "20px" }} dangerouslySetInnerHTML={{ __html: qrHtml }} />
+      <div style={{ color: '#666', fontSize: '0.8em', marginTop: '20px' }}>
         <code>{deviceId}</code>
+      </div>
     </div>
   );
 }

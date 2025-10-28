@@ -294,6 +294,77 @@ app.post("/line-webhook", async (req, res) => {
 });
 
 
+app.post("/toggle-alert", async (req, res) => {
+  try {
+    const { deviceId, enabled } = req.body;
+    if (!deviceId) {
+      return res.status(400).json({ success: false, error: "Missing deviceId" });
+    }
+
+    // Find user by deviceId
+    const snapshot = await db
+      .collection("users")
+      .where("deviceId", "==", deviceId)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: "Device not found" });
+    }
+
+    const userDoc = snapshot.docs[0];
+    
+    // Update alert status
+    await userDoc.ref.set({ alertEnabled: enabled }, { merge: true });
+
+    // Send success response
+    res.json({ 
+      success: true, 
+      alertEnabled: enabled 
+    });
+
+  } catch (err) {
+    console.error("Toggle alert error:", err);
+    res.status(500).json({ 
+      success: false, 
+      error: "Internal server error" 
+    });
+  }
+});
+
+app.get("/check-alert", async (req, res) => {
+  try {
+    const { deviceId } = req.query;
+    if (!deviceId) {
+      return res.status(400).json({ success: false, error: "Missing deviceId" });
+    }
+
+    const snapshot = await db
+      .collection("users")
+      .where("deviceId", "==", deviceId)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: "Device not found" });
+    }
+
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data();
+
+    res.json({ 
+      success: true, 
+      alertEnabled: !!userData.alertEnabled 
+    });
+
+  } catch (err) {
+    console.error("Check alert error:", err);
+    res.status(500).json({ 
+      success: false, 
+      error: "Internal server error" 
+    });
+  }
+});
 /* ---------------------- Link creation (callable API) ---------------------- */
 
 exports.createWatchLink = functions.https.onCall(async (data, ctx) => {
@@ -610,4 +681,8 @@ exports.sweepOldClosedSessions = functions.pubsub
     console.log("sweepOldClosedSessions done");
     return null;
   });
+
+app.get("/health-check", (req, res) => {
+  res.json({ status: "ok", timestamp: Date.now() });
+});
 

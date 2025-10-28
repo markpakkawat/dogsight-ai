@@ -3,18 +3,22 @@ import PairPage from "./PairPage";
 import HomePage from "./HomePage";
 
 function App() {
-  const [paired, setPaired] = useState(false);
   const [lineUserId, setLineUserId] = useState(null);
 
-  const handlePaired = (id) => {
-    setPaired(true);
-    setLineUserId(id);
-    if (window.electronAPI) {
-      window.electronAPI.sendPaired(); // Start backend + detection
-    }
+  const handleUnpair = () => {
+    setLineUserId(null);
+    // Add any other cleanup needed
   };
 
-  return paired ? <HomePage lineUserId={lineUserId} /> : <PairPage onPaired={handlePaired} />;
+  return (
+    <div>
+      {lineUserId ? (
+        <HomePage lineUserId={lineUserId} onUnpair={handleUnpair} />
+      ) : (
+        <PairPage onPaired={setLineUserId} />
+      )}
+    </div>
+  );
 }
 
 export default App;

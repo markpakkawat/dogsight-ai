@@ -1,90 +1,178 @@
 // /app/frontend/src/HomePage.js
 import React, { useEffect, useState } from "react";
-import { auth, db } from "./firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { watchLiveSessions } from "./webrtc/liveService.js";
-import SafeZoneCanvas from "./components/SafeZoneCanvas.jsx";
-import { useSafeZone } from "./hooks/useSafeZone.js";
+import { db } from "./firebase";
+import { doc, onSnapshot, getDoc, deleteDoc } from "firebase/firestore";
+import AlertToggle from "./components/AlertToggle";
+import SafeZoneCanvas from "./components/SafeZoneCanvas";
+import { useSafeZone } from "./hooks/useSafeZone";
 
-function HomePage({ lineUserId }) {
+// Add onUnpair to the component props
+function HomePage({ lineUserId, onUnpair }) {
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
 
-  // background watcher (as before)
-  useEffect(() => {
-    let stopWatching = null;
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (stopWatching) { stopWatching(); stopWatching = null; }
-      if (user) stopWatching = watchLiveSessions(db, user.uid);
-    });
-    return () => { unsub(); if (stopWatching) stopWatching(); };
-  }, []);
+  const [deviceId] = useState(() => {
+    let id = localStorage.getItem("deviceId");
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem("deviceId", id);
+    }
+    return id;
+  });
 
-  // alert state
+  // Replace the Firebase connection check
   useEffect(() => {
-    const run = async () => {
-      if (!lineUserId) return;
-      const ref = doc(db, "users", lineUserId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) setEnabled(!!snap.data().alertEnabled);
-      else await setDoc(ref, { alertEnabled: false }, { merge: true });
+    // Simple periodic ping to check Firestore connection
+    const checkConnection = async () => {
+      try {
+        // Try to read the user document
+        if (lineUserId) {
+          const docRef = doc(db, "users", lineUserId);
+          await getDoc(docRef);
+          setIsOnline(true);
+        }
+      } catch (error) {
+        console.error("Connection check error:", error);
+        setIsOnline(false);
+      }
     };
-    run();
+
+    // Check connection status periodically
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000); // Check every 30 seconds
+
+    // Also check browser's online status
+    const handleOnline = () => {
+      setIsOnline(navigator.onLine);
+      checkConnection(); // Verify Firestore connection when browser comes online
+    };
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Set initial online state based on browser
+    setIsOnline(navigator.onLine);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [lineUserId]);
 
-  const toggleAlert = async (state) => {
-    setLoading(true);
-    try {
-      if (!lineUserId) return;
-      await setDoc(doc(db, "users", lineUserId), { alertEnabled: state }, { merge: true });
-      setEnabled(state);
-    } finally { setLoading(false); }
-  };
+  // Listen for alert state changes
+  useEffect(() => {
+    if (!lineUserId) return;
 
-  // safe zone load/save
+    const unsubscribe = onSnapshot(
+      doc(db, "users", lineUserId),
+      (doc) => {
+        if (doc.exists()) {
+          setEnabled(!!doc.data().alertEnabled);
+        }
+      },
+      (error) => {
+        console.error("Alert state sync error:", error);
+        setIsOnline(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [lineUserId]);
+
+  // Add safe zone state management
   const { polygon, save, loading: zoneLoading, saving: zoneSaving } = useSafeZone(db, lineUserId);
 
-  return (
-    <div style={{ maxWidth: 960, margin:"24px auto", padding:"0 16px" }}>
-      <h2>🏠 Home Dashboard</h2>
-      <p>Paired LINE User: {lineUserId || "—"}</p>
+  const handleUnpair = async () => {
+    if (window.confirm("Are you sure you want to unpair? This will remove all settings.")) {
+      try {
+        // Delete user document from Firestore
+        if (lineUserId) {
+          await deleteDoc(doc(db, "users", lineUserId));
+        }
+        // Clear local storage
+        localStorage.removeItem("deviceId");
+        // Call parent's unpair handler
+        onUnpair();
+      } catch (error) {
+        console.error("Failed to unpair:", error);
+        alert("Failed to unpair. Please try again.");
+      }
+    }
+  };
 
-      <h3 style={{ marginTop: 30 }}>🔘 Alert Controls</h3>
-      <div style={{ display:"flex", gap:8 }}>
-        <button onClick={() => toggleAlert(true)} disabled={loading} style={btn(enabled ? "green" : "gray")}>
-          {loading ? "⏳…" : "Enable (ON)"}
-        </button>
-        <button onClick={() => toggleAlert(false)} disabled={loading} style={btn(!enabled ? "red" : "gray")}>
-          {loading ? "⏳…" : "Disable (OFF)"}
+  return (
+    <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center' 
+      }}>
+        <h2>🏠 Home Dashboard</h2>
+        <button
+          onClick={handleUnpair}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#ff4444',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <span>🔓</span>
+          Unpair Device
         </button>
       </div>
+      <p>Paired LINE User: {lineUserId || "—"}</p>
 
-      <h3 style={{ marginTop: 30 }}>🗺️ Safe Zone</h3>
-      <p style={{ opacity:.8, marginTop:-6 }}>Draw the allowed area. Points are saved as normalized (0..1) coords.</p>
+      {/* Connection status indicator */}
+      <div style={{
+        padding: '8px 16px',
+        marginBottom: '20px',
+        backgroundColor: isOnline ? '#e8f5e9' : '#ffebee',
+        borderRadius: '4px',
+        color: isOnline ? '#2e7d32' : '#c62828'
+      }}>
+        {isOnline ? '🟢 Connected' : '🔴 Offline - Check your internet connection'}
+      </div>
 
-      <div style={{ opacity: zoneLoading ? 0.6 : 1 }}>
+      <h3 style={{ marginTop: 30 }}>🔘 Alert Controls</h3>
+      <AlertToggle 
+        deviceId={deviceId} 
+        enabled={enabled}
+        onStateChange={setEnabled}
+        isOnline={isOnline}
+      />
+
+      {/* SafeZone section */}
+      <h3 style={{ marginTop: 30 }}>📍 Safe Zone</h3>
+      <div style={{
+        marginTop: 16,
+        border: '1px solid #ccc',
+        borderRadius: 8,
+        padding: 16,
+        backgroundColor: '#fff',
+        overflow: 'hidden', // Add this to prevent overflow
+        display: 'flex',    // Add this to center the canvas
+        justifyContent: 'center', // Add this to center the canvas
+        alignItems: 'center'      // Add this to center the canvas
+      }}>
         <SafeZoneCanvas
-          width={900}
-          height={506}                 // keep aspect close to your camera; change if needed
-          initialNormalized={polygon}  // load from Firestore
-          onSave={async (norm) => {
-            await save(norm);
-            alert(zoneSaving ? "Saving..." : "Saved!");
-          }}
+          initialNormalized={polygon}
+          onSave={save}
+          disabled={zoneLoading || zoneSaving || !isOnline}
+          width={Math.min(800, window.innerWidth - 64)} // Responsive width
+          height={450} // Keep aspect ratio
         />
       </div>
     </div>
   );
 }
-
-const btn = (bg) => ({
-  padding:"8px 12px",
-  border:"0",
-  borderRadius:8,
-  background:bg,
-  color:"#fff",
-  cursor:"pointer"
-});
 
 export default HomePage;
