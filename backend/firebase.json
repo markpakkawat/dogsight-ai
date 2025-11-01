@@ -1,18 +1,46 @@
 {
+  "functions": {
+    "source": "functions",
+    "ignore": [
+      "serviceAccountKey.json",
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-errors.log"
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
     }
-  ]
+  },
+  "hosting": {
+    "public": "hosting",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/watch.html"
+      }
+    ],
+    "headers": [{
+      "source": "**",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }]
+  }
 }
