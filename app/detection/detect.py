@@ -180,7 +180,7 @@ def draw_safe_zone(frame, polygon_normalized):
 
     return frame
 
-def process_frame(frame):
+def process_frame(frame, skip_detection=False):
     """Process a single frame with YOLOv11 detection"""
     global safe_zone_polygon, alert_enabled
 
@@ -188,8 +188,16 @@ def process_frame(frame):
         return frame
 
     try:
-        # Run YOLOv11 detection
-        results = model(frame, verbose=False)
+        # Draw safe zone overlay first (always show it)
+        if safe_zone_polygon:
+            frame = draw_safe_zone(frame, safe_zone_polygon)
+
+        # Skip heavy detection if requested (for performance)
+        if skip_detection:
+            return frame
+
+        # Run YOLOv11 detection with smaller input size for speed
+        results = model(frame, verbose=False, imgsz=320)  # Smaller input = faster
 
         # Get frame dimensions
         h, w = frame.shape[:2]
@@ -246,10 +254,6 @@ def process_frame(frame):
                     # Draw center point
                     cv2.circle(frame, (center_x, center_y), 5, color, -1)
 
-        # Draw safe zone overlay
-        if safe_zone_polygon:
-            frame = draw_safe_zone(frame, safe_zone_polygon)
-
         # Send alert if dog is outside zone and alerts are enabled
         if dog_outside_zone and alert_enabled and user_id:
             send_line_alert(user_id, "🚨 Your dog has left the safe zone!")
@@ -293,6 +297,9 @@ def capture_loop():
     ZONE_FETCH_INTERVAL = 10  # seconds
     ALERT_CHECK_INTERVAL = 5  # seconds
 
+    frame_count = 0
+    DETECTION_SKIP = 3  # Only run detection every 3rd frame for performance
+
     while True:
         try:
             ret, frame = camera.read()
@@ -301,6 +308,8 @@ def capture_loop():
                 print("⚠️ Failed to read frame")
                 time.sleep(0.1)
                 continue
+
+            frame_count += 1
 
             # Periodically fetch safe zone and alert status
             current_time = time.time()
@@ -312,8 +321,9 @@ def capture_loop():
                 check_alert_status(user_id)
                 last_alert_check = current_time
 
-            # Process frame with YOLOv11
-            processed_frame = process_frame(frame)
+            # Run full detection only every Nth frame for better performance
+            skip_detection = (frame_count % DETECTION_SKIP != 0)
+            processed_frame = process_frame(frame, skip_detection=skip_detection)
 
             # Update latest frame
             with frame_lock:
@@ -343,9 +353,9 @@ def generate_frames():
                 time.sleep(0.1)
                 continue
 
-            # Encode frame as JPEG
+            # Encode frame as JPEG with lower quality for better streaming
             ret, buffer = cv2.imencode('.jpg', latest_frame,
-                                       [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                       [cv2.IMWRITE_JPEG_QUALITY, 75])
 
             if not ret:
                 continue
@@ -356,7 +366,7 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-        time.sleep(0.033)  # ~30 FPS
+        time.sleep(0.05)  # ~20 FPS for smoother streaming
 
 @app.route('/stream')
 def video_stream():
