@@ -70,6 +70,11 @@ function PairPage({ onPaired }) {
             await signInWithCustomToken(auth, result.data.token);
             console.log("✅ Signed in as", data.lineUserId);
 
+            // Notify Electron main process
+            if (window.electronAPI && window.electronAPI.sendPaired) {
+              window.electronAPI.sendPaired(data.lineUserId);
+            }
+
             // Notify App.js
             onPaired(data.lineUserId);
             clearInterval(interval);

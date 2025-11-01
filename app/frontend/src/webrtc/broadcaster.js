@@ -23,23 +23,61 @@ const DEFAULT_ICE_SERVERS = [
 ];
 
 /**
- * Start broadcasting the local camera to a viewer session.
+ * Capture processed video stream from Python detection server
+ * @param {string} streamUrl URL of the MJPEG stream (default: http://localhost:5000/stream)
+ * @returns {Promise<MediaStream>}
+ */
+async function captureProcessedStream(streamUrl = "http://localhost:5000/stream") {
+  return new Promise((resolve, reject) => {
+    // Create image element to load MJPEG stream
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = streamUrl;
+
+    // Create canvas to capture frames
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    img.onload = () => {
+      canvas.width = img.width || 640;
+      canvas.height = img.height || 480;
+
+      // Draw frames continuously
+      const drawFrame = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        requestAnimationFrame(drawFrame);
+      };
+      drawFrame();
+
+      // Capture canvas as MediaStream
+      const stream = canvas.captureStream(30); // 30 FPS
+      resolve(stream);
+    };
+
+    img.onerror = (err) => {
+      reject(new Error("Failed to load processed video stream. Is Python detection server running?"));
+    };
+  });
+}
+
+/**
+ * Start broadcasting the processed video stream (from Python detection) to a viewer session.
  * @param {Firestore} db            Firebase Firestore instance
  * @param {string} userId           Owner/user id (also your streams/{userId} doc id)
  * @param {string} sessionId        Session document id
  * @param {object} options
  * @param {RTCIceServer[]} options.iceServers  Custom ICE servers (optional)
- * @param {MediaStreamConstraints} options.media    getUserMedia constraints (optional)
+ * @param {string} options.streamUrl    URL of processed video stream (optional)
  * @returns {Promise<{ pc: RTCPeerConnection, local: MediaStream, stop: Function }>}
  */
 export async function startBroadcast(db, userId, sessionId, options = {}) {
   const iceServers = options.iceServers || DEFAULT_ICE_SERVERS;
-  const mediaConstraints = options.media || { video: true, audio: false };
+  const streamUrl = options.streamUrl || "http://localhost:5000/stream";
 
   const pc = new RTCPeerConnection({ iceServers });
 
-  // 1) Capture camera
-  const local = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+  // 1) Capture processed video stream from Python server
+  const local = await captureProcessedStream(streamUrl);
   local.getTracks().forEach((t) => pc.addTrack(t, local));
 
   // 2) Publish host ICE candidates to Firestore
@@ -136,6 +174,7 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
       try { unsub && unsub(); } catch {}
       try { pc && pc.close(); } catch {}
       try { local && local.getTracks().forEach((t) => t.stop()); } catch {}
+      console.log("🛑 Broadcaster stopped");
     },
   };
 }
