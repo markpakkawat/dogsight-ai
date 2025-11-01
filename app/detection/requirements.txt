@@ -1,0 +1,18 @@
+# DogSight Detection Module Dependencies
+
+# Deep Learning & Computer Vision
+ultralytics>=8.0.0        # YOLOv11 (includes PyTorch)
+opencv-python>=4.8.0      # Computer vision operations
+numpy>=1.24.0             # Array operations
+
+# Web Server
+flask>=3.0.0              # HTTP server for video streaming
+
+# Firebase
+firebase-admin>=6.0.0     # Firebase Admin SDK for Firestore
+
+# Geometry operations
+shapely>=2.0.0            # Point-in-polygon calculations
+
+# HTTP requests
+requests>=2.31.0          # For making HTTP requests to backend
