@@ -1,91 +1,11 @@
 // /app/frontend/src/HomePage.js
-import React, { useEffect, useState, memo } from "react";
+import React, { useEffect, useState } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, getDoc, deleteDoc } from "firebase/firestore";
 import AlertToggle from "./components/AlertToggle";
 import SafeZoneCanvas from "./components/SafeZoneCanvas";
+import MJPEGStream from "./components/MJPEGStream";
 import { useSafeZone } from "./hooks/useSafeZone";
-
-// Memoized video stream component to prevent re-renders
-const VideoStream = memo(() => {
-  return (
-    <div style={{
-      marginTop: 20,
-      marginBottom: 20,
-      border: '2px solid #333',
-      borderRadius: 12,
-      overflow: 'hidden',
-      backgroundColor: '#0f0f10'
-    }}>
-      <div style={{
-        padding: '12px 16px',
-        backgroundColor: '#1a1a1a',
-        borderBottom: '1px solid #333',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <h3 style={{ margin: 0, fontSize: '16px' }}>📹 Live Detection Feed</h3>
-        <span style={{
-          fontSize: '12px',
-          color: '#39ff14',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <span style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: '#39ff14',
-            animation: 'pulse 2s infinite'
-          }} />
-          LIVE
-        </span>
-      </div>
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        paddingBottom: '56.25%',
-        backgroundColor: '#000'
-      }}>
-        <img
-          src="http://localhost:5000/stream"
-          alt="Live Detection Feed"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.nextSibling.style.display = 'flex';
-          }}
-        />
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          display: 'none',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          color: '#888',
-          gap: '12px'
-        }}>
-          <div style={{ fontSize: '48px' }}>📹</div>
-          <div style={{ fontSize: '14px' }}>Detection server not running</div>
-          <div style={{ fontSize: '12px', opacity: 0.7 }}>Start the Python detection module</div>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // Add onUnpair to the component props
 function HomePage({ lineUserId, onUnpair }) {
@@ -212,8 +132,8 @@ function HomePage({ lineUserId, onUnpair }) {
       </div>
       <p>Paired LINE User: {lineUserId || "—"}</p>
 
-      {/* Live Video Feed Section - Memoized to prevent re-renders */}
-      <VideoStream />
+      {/* Live Video Feed Section - Optimized Canvas Rendering */}
+      <MJPEGStream streamUrl="http://localhost:5000/stream" />
 
       {/* Connection status indicator */}
       <div style={{
