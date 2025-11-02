@@ -32,6 +32,10 @@ alert_enabled = False
 last_alert_time = None
 ALERT_COOLDOWN = timedelta(minutes=2)  # Don't spam alerts
 
+# Cache last detection results to prevent blinking
+last_detections = []
+detection_lock = threading.Lock()
+
 # Firebase configuration
 firebase_initialized = False
 
@@ -182,28 +186,56 @@ def draw_safe_zone(frame, polygon_normalized):
 
 def process_frame(frame, skip_detection=False):
     """Process a single frame with YOLOv11 detection"""
-    global safe_zone_polygon, alert_enabled
+    global safe_zone_polygon, alert_enabled, last_detections
 
     if model is None:
         return frame
 
     try:
+        # Get frame dimensions
+        h, w = frame.shape[:2]
+
         # Draw safe zone overlay first (always show it)
         if safe_zone_polygon:
             frame = draw_safe_zone(frame, safe_zone_polygon)
 
-        # Skip heavy detection if requested (for performance)
+        # If skipping detection, redraw last cached detections
         if skip_detection:
+            with detection_lock:
+                for detection in last_detections:
+                    x1, y1, x2, y2 = detection['bbox']
+                    conf = detection['conf']
+                    in_safe_zone = detection['in_zone']
+                    center_x, center_y = detection['center']
+
+                    # Draw bounding box
+                    color = (0, 0, 255) if not in_safe_zone else (0, 255, 0)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+                    # Draw label
+                    label = f"Dog {conf:.2f}"
+                    if not in_safe_zone:
+                        label += " ⚠️ OUTSIDE"
+
+                    (label_w, label_h), _ = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                    )
+                    cv2.rectangle(frame, (x1, y1 - label_h - 10),
+                                  (x1 + label_w, y1), color, -1)
+                    cv2.putText(frame, label, (x1, y1 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+                    # Draw center point
+                    cv2.circle(frame, (center_x, center_y), 5, color, -1)
+
             return frame
 
         # Run YOLOv11 detection with smaller input size for speed
         results = model(frame, verbose=False, imgsz=320)  # Smaller input = faster
 
-        # Get frame dimensions
-        h, w = frame.shape[:2]
-
         dog_detected = False
         dog_outside_zone = False
+        new_detections = []
 
         # Process detections
         for result in results:
@@ -234,6 +266,14 @@ def process_frame(frame, skip_detection=False):
                     if not in_safe_zone:
                         dog_outside_zone = True
 
+                    # Cache detection for later frames
+                    new_detections.append({
+                        'bbox': (x1, y1, x2, y2),
+                        'conf': conf,
+                        'in_zone': in_safe_zone,
+                        'center': (center_x, center_y)
+                    })
+
                     # Draw bounding box (red if outside zone, green if inside)
                     color = (0, 0, 255) if not in_safe_zone else (0, 255, 0)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -253,6 +293,10 @@ def process_frame(frame, skip_detection=False):
 
                     # Draw center point
                     cv2.circle(frame, (center_x, center_y), 5, color, -1)
+
+        # Update cached detections
+        with detection_lock:
+            last_detections = new_detections
 
         # Send alert if dog is outside zone and alerts are enabled
         if dog_outside_zone and alert_enabled and user_id:
