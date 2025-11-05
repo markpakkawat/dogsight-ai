@@ -86,6 +86,34 @@ function HomePage({ lineUserId, onUnpair }) {
   // Add safe zone state management
   const { polygon, save, loading: zoneLoading, saving: zoneSaving } = useSafeZone(db, lineUserId);
 
+  // Alert monitoring integration
+  useEffect(() => {
+    if (!lineUserId || !window.electronAPI) return;
+
+    // Get API base URL from environment or use default
+    const apiBaseUrl = process.env.REACT_APP_API_BASE;
+
+    // Start/stop alert monitoring based on enabled state
+    if (enabled && isOnline) {
+      console.log("🔔 Starting alert monitoring...");
+      window.electronAPI.startAlertMonitoring({
+        deviceId,
+        lineUserId,
+        safeZone: polygon || [],
+        apiBaseUrl
+      });
+    } else {
+      console.log("🔕 Stopping alert monitoring...");
+      window.electronAPI.stopAlertMonitoring();
+    }
+
+    return () => {
+      if (window.electronAPI.stopAlertMonitoring) {
+        window.electronAPI.stopAlertMonitoring();
+      }
+    };
+  }, [enabled, isOnline, lineUserId, deviceId, polygon]);
+
   const handleUnpair = async () => {
     if (window.confirm("Are you sure you want to unpair? This will remove all settings.")) {
       try {

@@ -24,5 +24,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("detection-result");
     ipcRenderer.removeAllListeners("detection-error");
     ipcRenderer.removeAllListeners("detection-stopped");
-  }
+  },
+
+  // Alert monitoring control
+  startAlertMonitoring: (config) => ipcRenderer.send("start-alert-monitoring", config),
+  stopAlertMonitoring: () => ipcRenderer.send("stop-alert-monitoring"),
 });

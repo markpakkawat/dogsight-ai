@@ -5,6 +5,19 @@ const path = require("path");
 let detectionProcess = null;
 let mainWindow = null;
 
+// Alert monitoring state
+let alertMonitor = {
+  enabled: false,
+  deviceId: null,
+  lineUserId: null,
+  lastSeenTime: null,
+  alertSent: false,
+  dogCurrentlyMissing: false,
+  checkInterval: null,
+  safeZone: [],
+  apiBaseUrl: null,
+};
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
@@ -26,6 +39,164 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+// ============================================================================
+// Alert Monitoring System
+// ============================================================================
+
+// Point-in-polygon check using ray casting algorithm
+function isPointInPolygon(point, polygon) {
+  if (!polygon || polygon.length < 3) return true; // No safe zone = always "inside"
+
+  let x = point.x, y = point.y;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    let xi = polygon[i].x, yi = polygon[i].y;
+    let xj = polygon[j].x, yj = polygon[j].y;
+
+    let intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+// Check if dog is inside safe zone
+function isDogInSafeZone(detection, frameWidth, frameHeight, safeZone) {
+  if (!safeZone || safeZone.length === 0) return true; // No safe zone = always inside
+
+  // Get center point of bounding box
+  const [x1, y1, x2, y2] = detection.bbox;
+  const centerX = (x1 + x2) / 2 / frameWidth;  // Normalize to 0-1
+  const centerY = (y1 + y2) / 2 / frameHeight; // Normalize to 0-1
+
+  return isPointInPolygon({ x: centerX, y: centerY }, safeZone);
+}
+
+// Send alert notification via Firebase Function
+async function sendAlertNotification(message) {
+  if (!alertMonitor.apiBaseUrl) {
+    console.error("⚠️ API base URL not configured for alerts");
+    return;
+  }
+
+  try {
+    const fetch = require("node-fetch");
+    const response = await fetch(`${alertMonitor.apiBaseUrl}/send-dog-alert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: alertMonitor.deviceId,
+        message: message,
+        timestamp: new Date().toISOString()
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log("✅ Alert sent successfully to LINE");
+    } else {
+      console.log("⚠️ Alert not sent:", result.reason || result.error);
+    }
+  } catch (error) {
+    console.error("❌ Failed to send alert:", error);
+  }
+}
+
+// Start alert monitoring
+function startAlertMonitoring(config) {
+  const { deviceId, lineUserId, safeZone, apiBaseUrl } = config;
+
+  console.log("🔔 Starting alert monitoring for device:", deviceId);
+
+  alertMonitor.enabled = true;
+  alertMonitor.deviceId = deviceId;
+  alertMonitor.lineUserId = lineUserId;
+  alertMonitor.safeZone = safeZone || [];
+  alertMonitor.apiBaseUrl = apiBaseUrl;
+  alertMonitor.lastSeenTime = Date.now();
+  alertMonitor.alertSent = false;
+  alertMonitor.dogCurrentlyMissing = false;
+
+  // Clear any existing interval
+  if (alertMonitor.checkInterval) {
+    clearInterval(alertMonitor.checkInterval);
+  }
+
+  // Check every 5 seconds if dog has been missing for 30 seconds
+  alertMonitor.checkInterval = setInterval(() => {
+    if (!alertMonitor.enabled) return;
+
+    const now = Date.now();
+    const timeSinceLastSeen = now - alertMonitor.lastSeenTime;
+
+    // If dog missing for 30+ seconds and alert not sent yet
+    if (timeSinceLastSeen >= 30000 && !alertMonitor.alertSent) {
+      console.log("🚨 Dog missing for 30 seconds! Sending alert...");
+      sendAlertNotification("🚨 Dog has disappeared for 30 seconds!");
+      alertMonitor.alertSent = true;
+      alertMonitor.dogCurrentlyMissing = true;
+    }
+  }, 5000); // Check every 5 seconds
+
+  console.log("✅ Alert monitoring started");
+}
+
+// Stop alert monitoring
+function stopAlertMonitoring() {
+  console.log("🔕 Stopping alert monitoring");
+
+  alertMonitor.enabled = false;
+
+  if (alertMonitor.checkInterval) {
+    clearInterval(alertMonitor.checkInterval);
+    alertMonitor.checkInterval = null;
+  }
+
+  alertMonitor.lastSeenTime = null;
+  alertMonitor.alertSent = false;
+  alertMonitor.dogCurrentlyMissing = false;
+}
+
+// Process detection data for alert monitoring
+function processDetectionForAlert(data) {
+  if (!alertMonitor.enabled || !data.detections) return;
+
+  // Check if any dog is inside the safe zone
+  let dogInSafeZone = false;
+
+  for (const detection of data.detections) {
+    if (detection.class === "dog") {
+      const inZone = isDogInSafeZone(
+        detection,
+        data.frame_width,
+        data.frame_height,
+        alertMonitor.safeZone
+      );
+
+      if (inZone) {
+        dogInSafeZone = true;
+        break;
+      }
+    }
+  }
+
+  // If dog found in safe zone, update last seen time and reset alert
+  if (dogInSafeZone) {
+    // Check if dog was previously missing - if so, send return notification
+    if (alertMonitor.dogCurrentlyMissing) {
+      console.log("✅ Dog has returned to safe zone! Sending notification...");
+      sendAlertNotification("✅ Good news! Your dog has returned to the safe zone.");
+      alertMonitor.dogCurrentlyMissing = false;
+    }
+
+    alertMonitor.lastSeenTime = Date.now();
+    alertMonitor.alertSent = false;
+  }
+}
+
+// ============================================================================
 // Detection process management
 function startDetection() {
   if (detectionProcess) {
@@ -72,6 +243,10 @@ function startDetection() {
         if (line.trim()) {
           try {
             const result = JSON.parse(line);
+
+            // Process for alert monitoring
+            processDetectionForAlert(result);
+
             // Send detection result to renderer
             if (mainWindow) {
               mainWindow.webContents.send("detection-result", result);
@@ -138,7 +313,19 @@ ipcMain.on("stop-detection", () => {
   stopDetection();
 });
 
+// Alert monitoring handlers
+ipcMain.on("start-alert-monitoring", (event, config) => {
+  console.log("🔔 Start alert monitoring requested");
+  startAlertMonitoring(config);
+});
+
+ipcMain.on("stop-alert-monitoring", () => {
+  console.log("🔕 Stop alert monitoring requested");
+  stopAlertMonitoring();
+});
+
 // Cleanup on app quit
 app.on("before-quit", () => {
   stopDetection();
+  stopAlertMonitoring();
 });
