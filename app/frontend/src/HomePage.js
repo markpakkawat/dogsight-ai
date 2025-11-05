@@ -4,6 +4,7 @@ import { db } from "./firebase";
 import { doc, onSnapshot, getDoc, deleteDoc } from "firebase/firestore";
 import AlertToggle from "./components/AlertToggle";
 import SafeZoneCanvas from "./components/SafeZoneCanvas";
+import DetectionView from "./components/DetectionView";
 import { useSafeZone } from "./hooks/useSafeZone";
 
 // Add onUnpair to the component props
@@ -143,12 +144,31 @@ function HomePage({ lineUserId, onUnpair }) {
       </div>
 
       <h3 style={{ marginTop: 30 }}>🔘 Alert Controls</h3>
-      <AlertToggle 
-        deviceId={deviceId} 
+      <AlertToggle
+        deviceId={deviceId}
         enabled={enabled}
         onStateChange={setEnabled}
         isOnline={isOnline}
       />
+
+      {/* Detection View section */}
+      <h3 style={{ marginTop: 30 }}>🐶 Dog Detection</h3>
+      <div style={{
+        marginTop: 16,
+        border: '1px solid #ccc',
+        borderRadius: 8,
+        padding: 16,
+        backgroundColor: '#fff',
+        overflow: 'hidden',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        <DetectionView
+          width={Math.min(800, window.innerWidth - 64)}
+          height={450}
+        />
+      </div>
 
       {/* SafeZone section */}
       <h3 style={{ marginTop: 30 }}>📍 Safe Zone</h3>
