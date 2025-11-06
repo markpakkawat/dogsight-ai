@@ -1,6 +1,36 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
 
+// Platform-specific timeout constants (in milliseconds)
+const TIMEOUT_WINDOWS = {
+  startup: 15000,        // 15s - Python startup + library imports (cv2, ultralytics)
+  loading_model: 10000,  // 10s - YOLO model loading
+  camera_opened: 5000,   // 5s - Camera initialization
+  testing_camera: 5000,  // 5s - Camera test
+  first_frame: 5000,     // 5s - First frame arrival
+  total: 40000           // 40s total
+};
+
+const TIMEOUT_MAC = {
+  startup: 20000,        // 20s - Mac/ARM can be slower
+  loading_model: 20000,  // 20s - YOLO model loading on ARM
+  camera_opened: 8000,   // 8s - Camera initialization
+  testing_camera: 7000,  // 7s - Camera test
+  first_frame: 5000,     // 5s - First frame arrival
+  total: 60000           // 60s total
+};
+
+// Phase display messages
+const PHASE_MESSAGES = {
+  startup: "Starting detection...",
+  loading_model: "Loading AI model...",
+  model_loaded: "AI model loaded",
+  camera_opened: "Opening camera...",
+  testing_camera: "Testing camera...",
+  camera_ready: "Camera ready",
+  streaming: "Live detection active"
+};
+
 export default function DetectionView({
   width = 800,
   height = 450, // 16:9 aspect ratio
@@ -14,6 +44,11 @@ export default function DetectionView({
   const [initializationStarted, setInitializationStarted] = useState(false);
   const timeoutRef = useRef(null);
 
+  // Phase tracking for multi-phase timeout
+  const [currentPhase, setCurrentPhase] = useState('startup');
+  const [phaseStartTime, setPhaseStartTime] = useState(Date.now());
+  const [platform, setPlatform] = useState('win32');
+
   // Auto-start camera preview when component mounts
   useEffect(() => {
     // Check if electronAPI is available
@@ -21,6 +56,10 @@ export default function DetectionView({
       setError("Electron API not available");
       return;
     }
+
+    // Detect platform
+    const detectedPlatform = window.electronAPI.getPlatform();
+    setPlatform(detectedPlatform);
 
     // Auto-start detection to show video feed immediately
     window.electronAPI.startDetection();
@@ -33,7 +72,7 @@ export default function DetectionView({
     };
   }, []);
 
-  // Add timeout to detect stuck camera initialization
+  // Phase-based timeout to detect stuck initialization
   useEffect(() => {
     // Clear any existing timeout
     if (timeoutRef.current) {
@@ -41,13 +80,22 @@ export default function DetectionView({
       timeoutRef.current = null;
     }
 
-    // Only set timeout if no frame received and no initialization progress
-    if (!currentFrame && !error && !initializationStarted) {
+    // Only set timeout if not streaming and no error
+    if (currentPhase !== 'streaming' && !error) {
+      // Get platform-specific timeout
+      const timeouts = platform === 'darwin' ? TIMEOUT_MAC : TIMEOUT_WINDOWS;
+      const phaseTimeout = timeouts[currentPhase] || timeouts.total;
+
       timeoutRef.current = setTimeout(() => {
-        // Only show timeout error if we haven't received any initialization messages
-        if (!initializationStarted) {
+        // Check if still in same phase
+        const elapsed = Date.now() - phaseStartTime;
+        if (elapsed >= phaseTimeout) {
+          const platformName = platform === 'darwin' ? 'Mac' : 'Windows';
           setError(
-            "Camera initialization timeout. Please check:\n" +
+            `Initialization timeout during: ${PHASE_MESSAGES[currentPhase] || currentPhase}\n\n` +
+            `Expected: ${phaseTimeout / 1000}s (${platformName})\n` +
+            `Elapsed: ${Math.floor(elapsed / 1000)}s\n\n` +
+            "Please check:\n" +
             "• Camera is connected and working\n" +
             "• Camera permissions are granted\n" +
             "• No other application is using the camera\n" +
@@ -55,7 +103,7 @@ export default function DetectionView({
           );
           setIsRunning(false);
         }
-      }, 30000); // 30 second timeout
+      }, phaseTimeout);
     }
 
     return () => {
@@ -64,7 +112,7 @@ export default function DetectionView({
         timeoutRef.current = null;
       }
     };
-  }, [currentFrame, error, initializationStarted]);
+  }, [currentPhase, phaseStartTime, platform, error]);
 
   // Listen for detection results from Python
   useEffect(() => {
@@ -88,22 +136,33 @@ export default function DetectionView({
         return;
       }
 
-      if (data.status === "loading_model" || data.status === "model_loaded" || data.status === "camera_opened" || data.status === "testing_camera" || data.status === "camera_ready") {
-        // Clear timeout - initialization is progressing
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-          timeoutRef.current = null;
-        }
+      // Handle status updates and phase transitions
+      if (data.status) {
         setInitializationStarted(true);
         setIsRunning(true);
         setError(null);
-      } else if (data.detections !== undefined) {
-        // Clear timeout - we're getting frames
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-          timeoutRef.current = null;
+
+        // Update phase based on status
+        const statusToPhase = {
+          "loading_model": "loading_model",
+          "model_loaded": "model_loaded",
+          "camera_opened": "camera_opened",
+          "testing_camera": "testing_camera",
+          "camera_ready": "camera_ready"
+        };
+
+        const newPhase = statusToPhase[data.status];
+        if (newPhase && newPhase !== currentPhase) {
+          setCurrentPhase(newPhase);
+          setPhaseStartTime(Date.now());
         }
+      } else if (data.detections !== undefined) {
+        // First frame received - now streaming
         setInitializationStarted(true);
+        if (currentPhase !== 'streaming') {
+          setCurrentPhase('streaming');
+          setPhaseStartTime(Date.now());
+        }
         setDetectionData(data);
         if (data.frame_width && data.frame_height) {
           setFrameSize({ width: data.frame_width, height: data.frame_height });
@@ -243,7 +302,7 @@ export default function DetectionView({
                 <Text
                   x={16}
                   y={16}
-                  text="Starting camera..."
+                  text={PHASE_MESSAGES[currentPhase] || "Initializing..."}
                   fontSize={14}
                   fill="#fff"
                   shadowColor="#000"
@@ -253,7 +312,7 @@ export default function DetectionView({
                 <Text
                   x={16}
                   y={40}
-                  text="If this takes too long, check camera availability"
+                  text={`Platform: ${platform === 'darwin' ? 'Mac' : 'Windows'} • Phase timeout: ${((platform === 'darwin' ? TIMEOUT_MAC : TIMEOUT_WINDOWS)[currentPhase] || 30000) / 1000}s`}
                   fontSize={11}
                   fill="#aaa"
                   shadowColor="#000"

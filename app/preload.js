@@ -29,4 +29,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Alert monitoring control
   startAlertMonitoring: (config) => ipcRenderer.send("start-alert-monitoring", config),
   stopAlertMonitoring: () => ipcRenderer.send("stop-alert-monitoring"),
+
+  // Platform detection
+  getPlatform: () => process.platform,
 });
