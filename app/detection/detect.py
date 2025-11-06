@@ -13,6 +13,7 @@ def main():
 
     # Load YOLO11 model
     try:
+        print(json.dumps({"status": "loading_model", "message": "Loading YOLO11n model..."}), flush=True)
         model = YOLO(str(model_path))
         print(json.dumps({"status": "model_loaded", "path": str(model_path)}), flush=True)
     except Exception as e:

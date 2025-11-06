@@ -11,6 +11,8 @@ export default function DetectionView({
   const [error, setError] = useState(null);
   const [frameSize, setFrameSize] = useState({ width: 640, height: 480 });
   const [currentFrame, setCurrentFrame] = useState(null);
+  const [initializationStarted, setInitializationStarted] = useState(false);
+  const timeoutRef = useRef(null);
 
   // Auto-start camera preview when component mounts
   useEffect(() => {
@@ -33,22 +35,36 @@ export default function DetectionView({
 
   // Add timeout to detect stuck camera initialization
   useEffect(() => {
-    // Only set timeout if detection is starting but no frame received yet
-    if (!currentFrame && !error) {
-      const timeout = setTimeout(() => {
-        setError(
-          "Camera initialization timeout. Please check:\n" +
-          "• Camera is connected and working\n" +
-          "• Camera permissions are granted\n" +
-          "• No other application is using the camera\n" +
-          "• Try restarting the application"
-        );
-        setIsRunning(false);
-      }, 10000); // 10 second timeout
-
-      return () => clearTimeout(timeout);
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
-  }, [currentFrame, error]);
+
+    // Only set timeout if no frame received and no initialization progress
+    if (!currentFrame && !error && !initializationStarted) {
+      timeoutRef.current = setTimeout(() => {
+        // Only show timeout error if we haven't received any initialization messages
+        if (!initializationStarted) {
+          setError(
+            "Camera initialization timeout. Please check:\n" +
+            "• Camera is connected and working\n" +
+            "• Camera permissions are granted\n" +
+            "• No other application is using the camera\n" +
+            "• Try restarting the application"
+          );
+          setIsRunning(false);
+        }
+      }, 30000); // 30 second timeout
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [currentFrame, error, initializationStarted]);
 
   // Listen for detection results from Python
   useEffect(() => {
@@ -62,15 +78,32 @@ export default function DetectionView({
     window.electronAPI.onDetectionResult((data) => {
       // Check for error objects from Python
       if (data.error) {
+        // Clear timeout since we got a response (even if error)
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
         setError(data.message || "Detection error occurred");
         setIsRunning(false);
         return;
       }
 
-      if (data.status === "model_loaded" || data.status === "camera_opened") {
+      if (data.status === "loading_model" || data.status === "model_loaded" || data.status === "camera_opened" || data.status === "testing_camera" || data.status === "camera_ready") {
+        // Clear timeout - initialization is progressing
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        setInitializationStarted(true);
         setIsRunning(true);
         setError(null);
       } else if (data.detections !== undefined) {
+        // Clear timeout - we're getting frames
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        setInitializationStarted(true);
         setDetectionData(data);
         if (data.frame_width && data.frame_height) {
           setFrameSize({ width: data.frame_width, height: data.frame_height });

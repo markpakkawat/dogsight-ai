@@ -6,6 +6,13 @@ let detectionProcess = null;
 let mainWindow = null;
 let pythonErrorReceived = false; // Track if Python sent a specific error
 
+// Helper function to safely send messages to renderer
+function safelySendToRenderer(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
 // Alert monitoring state
 let alertMonitor = {
   enabled: false,
@@ -207,8 +214,8 @@ function startDetection() {
 
   // Check if we should use compiled executable or Python script
   const fs = require("fs");
-  const detectExePathWin = path.join(__dirname, "detection", "dist", "detect.exe");
-  const detectExePathMac = path.join(__dirname, "detection", "dist", "detect");
+  const detectExePathWin = path.join(__dirname, "detection", "detect.exe");
+  const detectExePathMac = path.join(__dirname, "detection", "detect");
   const detectPyPath = path.join(__dirname, "detection", "detect.py");
 
   let detectionArgs = [];
@@ -228,12 +235,10 @@ function startDetection() {
     console.log(`🐶 Using Python script for detection (${detectionCommand})`);
   } else {
     console.error("⚠️ Detection script not found");
-    if (mainWindow) {
-      mainWindow.webContents.send("detection-error", {
-        error: "detection_not_found",
-        message: "Detection script not found. Please ensure Python is installed or compile the detection script.",
-      });
-    }
+    safelySendToRenderer("detection-error", {
+      error: "detection_not_found",
+      message: "Detection script not found. Please ensure Python is installed or compile the detection script.",
+    });
     return;
   }
 
@@ -259,9 +264,7 @@ function startDetection() {
             processDetectionForAlert(result);
 
             // Send detection result to renderer
-            if (mainWindow) {
-              mainWindow.webContents.send("detection-result", result);
-            }
+            safelySendToRenderer("detection-result", result);
           } catch (err) {
             console.error("⚠️ Failed to parse detection output:", line);
           }
@@ -275,44 +278,38 @@ function startDetection() {
       console.error("🐶 Detection stderr:", errorMsg);
 
       // Forward stderr to renderer so users can see Python errors
-      if (mainWindow) {
-        mainWindow.webContents.send("detection-error", {
-          error: "stderr_output",
-          message: errorMsg,
-        });
-      }
+      safelySendToRenderer("detection-error", {
+        error: "stderr_output",
+        message: errorMsg,
+      });
     });
 
     // Handle process exit
     detectionProcess.on("exit", (code) => {
       console.log(`🐶 Detection process exited with code ${code}`);
       detectionProcess = null;
-      if (mainWindow) {
-        mainWindow.webContents.send("detection-stopped", { code });
+      safelySendToRenderer("detection-stopped", { code });
 
-        // Only send generic error if Python didn't already send a specific error
-        if (code !== 0 && code !== null && !pythonErrorReceived) {
-          mainWindow.webContents.send("detection-error", {
-            error: "process_exit",
-            message: `Detection process exited unexpectedly (code ${code}). Check camera availability and permissions.`,
-          });
-        }
-
-        // Reset flag for next run
-        pythonErrorReceived = false;
+      // Only send generic error if Python didn't already send a specific error
+      if (code !== 0 && code !== null && !pythonErrorReceived) {
+        safelySendToRenderer("detection-error", {
+          error: "process_exit",
+          message: `Detection process exited unexpectedly (code ${code}). Check camera availability and permissions.`,
+        });
       }
+
+      // Reset flag for next run
+      pythonErrorReceived = false;
     });
 
     // Handle process errors
     detectionProcess.on("error", (err) => {
       console.error("⚠️ Detection process error:", err);
       detectionProcess = null;
-      if (mainWindow) {
-        mainWindow.webContents.send("detection-error", {
-          error: "process_error",
-          message: err.message,
-        });
-      }
+      safelySendToRenderer("detection-error", {
+        error: "process_error",
+        message: err.message,
+      });
     });
   } catch (err) {
     console.error("⚠️ Failed to start detection:", err);

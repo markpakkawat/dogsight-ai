@@ -19,20 +19,32 @@ Compiling the Python script creates a standalone executable that doesn't require
 ```bash
 cd app/detection
 pip install pyinstaller
-pyinstaller --onefile --name detect detect.py
+pyinstaller --onefile --name detect --distpath . detect.py
 ```
 
-This creates `app/detection/dist/detect.exe`
+This creates `app/detection/detect.exe`
+
+**After compilation, move the YOLO model:**
+```bash
+copy yolo11n.pt detect.exe
+```
+(The model file must be in the same directory as the executable)
 
 #### macOS
 
 ```bash
 cd app/detection
 pip3 install pyinstaller
-pyinstaller --onefile --name detect detect.py
+pyinstaller --onefile --name detect --distpath . detect.py
 ```
 
-This creates `app/detection/dist/detect` (executable with no extension)
+This creates `app/detection/detect` (executable with no extension)
+
+**After compilation, ensure the YOLO model is in the same directory:**
+```bash
+cp yolo11n.pt detect
+```
+(The model file must be in the same directory as the executable)
 
 **Note**: The compiled executable must include the YOLO model file (`yolo11n.pt`) in the same directory.
 
@@ -86,7 +98,7 @@ Here's the complete build process from start to finish:
 # 1. Compile Python detection script
 cd app/detection
 pip install pyinstaller
-pyinstaller --onefile --name detect detect.py
+pyinstaller --onefile --name detect --distpath . detect.py
 cd ../..
 
 # 2. Build React frontend
@@ -146,8 +158,8 @@ pip install -r requirements.txt
 - Try running with administrator/sudo privileges
 
 ### Model file not found
-- Ensure `yolo11n.pt` is in `app/detection/` directory
-- If using compiled executable, copy model file to `app/detection/dist/`
+- Ensure `yolo11n.pt` is in `app/detection/` directory (same location as detect.exe or detect)
+- The model file must be in the same directory as the compiled executable
 
 ## Notes
 
