@@ -23,7 +23,12 @@ def main():
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
-        print(json.dumps({"error": "camera_failed", "message": "Could not open camera"}), flush=True)
+        import platform
+        system_info = platform.system()
+        print(json.dumps({
+            "error": "camera_failed",
+            "message": f"Could not open camera on {system_info}. Please check:\n- Camera is connected\n- Camera permissions are granted\n- No other application is using the camera"
+        }), flush=True)
         sys.exit(1)
 
     # Set camera properties for better performance
@@ -32,6 +37,19 @@ def main():
     cap.set(cv2.CAP_PROP_FPS, 30)
 
     print(json.dumps({"status": "camera_opened"}), flush=True)
+
+    # Test reading first frame to ensure camera actually works
+    print(json.dumps({"status": "testing_camera", "message": "Testing camera frame capture..."}), flush=True)
+    ret, test_frame = cap.read()
+    if not ret:
+        print(json.dumps({
+            "error": "camera_no_frames",
+            "message": "Camera opened but cannot read frames. Camera may be:\n- In use by another application\n- Driver issue\n- Permission denied\n\nTry:\n1. Close other apps using camera\n2. Restart the application\n3. Check camera privacy settings"
+        }), flush=True)
+        cap.release()
+        sys.exit(1)
+
+    print(json.dumps({"status": "camera_ready", "message": "Camera test successful, starting detection..."}), flush=True)
 
     frame_count = 0
     fps_start_time = time.time()
@@ -43,7 +61,10 @@ def main():
             ret, frame = cap.read()
 
             if not ret:
-                print(json.dumps({"error": "frame_read_failed"}), flush=True)
+                print(json.dumps({
+                    "error": "frame_read_failed",
+                    "message": "Failed to read frame from camera. Camera connection may have been lost or another application took control."
+                }), flush=True)
                 break
 
             # Run YOLO detection

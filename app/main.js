@@ -4,6 +4,7 @@ const path = require("path");
 
 let detectionProcess = null;
 let mainWindow = null;
+let pythonErrorReceived = false; // Track if Python sent a specific error
 
 // Alert monitoring state
 let alertMonitor = {
@@ -244,6 +245,11 @@ function startDetection() {
           try {
             const result = JSON.parse(line);
 
+            // Track if Python sent an error
+            if (result.error) {
+              pythonErrorReceived = true;
+            }
+
             // Process for alert monitoring
             processDetectionForAlert(result);
 
@@ -260,7 +266,16 @@ function startDetection() {
 
     // Handle stderr (errors and logs)
     detectionProcess.stderr.on("data", (data) => {
-      console.error("🐶 Detection stderr:", data.toString());
+      const errorMsg = data.toString();
+      console.error("🐶 Detection stderr:", errorMsg);
+
+      // Forward stderr to renderer so users can see Python errors
+      if (mainWindow) {
+        mainWindow.webContents.send("detection-error", {
+          error: "stderr_output",
+          message: errorMsg,
+        });
+      }
     });
 
     // Handle process exit
@@ -269,6 +284,17 @@ function startDetection() {
       detectionProcess = null;
       if (mainWindow) {
         mainWindow.webContents.send("detection-stopped", { code });
+
+        // Only send generic error if Python didn't already send a specific error
+        if (code !== 0 && code !== null && !pythonErrorReceived) {
+          mainWindow.webContents.send("detection-error", {
+            error: "process_exit",
+            message: `Detection process exited unexpectedly (code ${code}). Check camera availability and permissions.`,
+          });
+        }
+
+        // Reset flag for next run
+        pythonErrorReceived = false;
       }
     });
 

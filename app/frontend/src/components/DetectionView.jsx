@@ -31,6 +31,25 @@ export default function DetectionView({
     };
   }, []);
 
+  // Add timeout to detect stuck camera initialization
+  useEffect(() => {
+    // Only set timeout if detection is starting but no frame received yet
+    if (!currentFrame && !error) {
+      const timeout = setTimeout(() => {
+        setError(
+          "Camera initialization timeout. Please check:\n" +
+          "• Camera is connected and working\n" +
+          "• Camera permissions are granted\n" +
+          "• No other application is using the camera\n" +
+          "• Try restarting the application"
+        );
+        setIsRunning(false);
+      }, 10000); // 10 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [currentFrame, error]);
+
   // Listen for detection results from Python
   useEffect(() => {
     // Check if electronAPI is available
@@ -41,6 +60,13 @@ export default function DetectionView({
 
     // Listen for detection results
     window.electronAPI.onDetectionResult((data) => {
+      // Check for error objects from Python
+      if (data.error) {
+        setError(data.message || "Detection error occurred");
+        setIsRunning(false);
+        return;
+      }
+
       if (data.status === "model_loaded" || data.status === "camera_opened") {
         setIsRunning(true);
         setError(null);
@@ -85,17 +111,12 @@ export default function DetectionView({
       {/* Status bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 13, opacity: 0.8 }}>
-          <span style={{ color: "#39ff14" }}>● </span>
-          Live Detection
+          <span style={{ color: error ? "#ff4444" : "#39ff14" }}>● </span>
+          {error ? "Error" : "Live Detection"}
         </div>
-        {detectionData && (
+        {detectionData && !error && (
           <div style={{ fontSize: 12, opacity: 0.6 }}>
             FPS: {detectionData.fps || 0} | Frame: {detectionData.frame || 0}
-          </div>
-        )}
-        {error && (
-          <div style={{ fontSize: 12, color: "#ff4444" }}>
-            Error: {error}
           </div>
         )}
       </div>
@@ -184,17 +205,74 @@ export default function DetectionView({
             })}
 
             {/* Helper text when camera is starting */}
-            {!currentFrame && (
-              <Text
-                x={16}
-                y={16}
-                text="Starting camera..."
-                fontSize={14}
-                fill="#fff"
-                shadowColor="#000"
-                shadowBlur={10}
-                shadowOpacity={0.8}
-              />
+            {!currentFrame && !error && (
+              <>
+                <Text
+                  x={16}
+                  y={16}
+                  text="Starting camera..."
+                  fontSize={14}
+                  fill="#fff"
+                  shadowColor="#000"
+                  shadowBlur={10}
+                  shadowOpacity={0.8}
+                />
+                <Text
+                  x={16}
+                  y={40}
+                  text="If this takes too long, check camera availability"
+                  fontSize={11}
+                  fill="#aaa"
+                  shadowColor="#000"
+                  shadowBlur={8}
+                  shadowOpacity={0.8}
+                />
+              </>
+            )}
+
+            {/* Error message overlay */}
+            {error && (
+              <>
+                {/* Semi-transparent background for error message */}
+                <Rect
+                  x={20}
+                  y={20}
+                  width={width - 40}
+                  height={Math.min(200, height - 40)}
+                  fill="rgba(40, 0, 0, 0.9)"
+                  cornerRadius={8}
+                  stroke="#ff4444"
+                  strokeWidth={2}
+                />
+                {/* Error icon */}
+                <Text
+                  x={width / 2 - 20}
+                  y={40}
+                  text="⚠️"
+                  fontSize={32}
+                />
+                {/* Error title */}
+                <Text
+                  x={40}
+                  y={85}
+                  text="Camera Error"
+                  fontSize={18}
+                  fill="#ff4444"
+                  fontStyle="bold"
+                />
+                {/* Error message - split by newlines */}
+                {error.split('\n').map((line, idx) => (
+                  <Text
+                    key={idx}
+                    x={40}
+                    y={115 + idx * 20}
+                    text={line}
+                    fontSize={13}
+                    fill="#fff"
+                    width={width - 80}
+                  />
+                ))}
+              </>
             )}
 
             {/* Detection count overlay */}
