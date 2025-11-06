@@ -205,28 +205,33 @@ function startDetection() {
     return;
   }
 
-  // Check if we should use .exe or .py
-  const detectExePath = path.join(__dirname, "detection", "dist", "detect.exe");
-  const detectPyPath = path.join(__dirname, "detection", "detect.py");
+  // Check if we should use compiled executable or Python script
   const fs = require("fs");
+  const detectExePathWin = path.join(__dirname, "detection", "dist", "detect.exe");
+  const detectExePathMac = path.join(__dirname, "detection", "dist", "detect");
+  const detectPyPath = path.join(__dirname, "detection", "detect.py");
 
   let detectionArgs = [];
   let detectionCommand = "";
 
-  // Try to use .exe first, fall back to Python
-  if (fs.existsSync(detectExePath)) {
-    detectionCommand = detectExePath;
-    console.log("🐶 Using compiled detection executable");
+  // Try compiled executable first (platform-specific)
+  if (process.platform === "win32" && fs.existsSync(detectExePathWin)) {
+    detectionCommand = detectExePathWin;
+    console.log("🐶 Using compiled detection executable (Windows)");
+  } else if (process.platform === "darwin" && fs.existsSync(detectExePathMac)) {
+    detectionCommand = detectExePathMac;
+    console.log("🐶 Using compiled detection executable (Mac)");
   } else if (fs.existsSync(detectPyPath)) {
-    detectionCommand = "python";
+    // Fall back to Python script (use python3 on Mac, python on Windows)
+    detectionCommand = process.platform === "darwin" ? "python3" : "python";
     detectionArgs = [detectPyPath];
-    console.log("🐶 Using Python script for detection");
+    console.log(`🐶 Using Python script for detection (${detectionCommand})`);
   } else {
     console.error("⚠️ Detection script not found");
     if (mainWindow) {
       mainWindow.webContents.send("detection-error", {
         error: "detection_not_found",
-        message: "Detection script not found",
+        message: "Detection script not found. Please ensure Python is installed or compile the detection script.",
       });
     }
     return;
