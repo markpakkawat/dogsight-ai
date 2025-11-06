@@ -3,21 +3,21 @@ import { Stage, Layer, Rect, Text } from "react-konva";
 
 // Platform-specific timeout constants (in milliseconds)
 const TIMEOUT_WINDOWS = {
-  startup: 15000,        // 15s - Python startup + library imports (cv2, ultralytics)
+  startup: 60000,        // 60s - Python startup + library imports (cv2, ultralytics)
   loading_model: 10000,  // 10s - YOLO model loading
   camera_opened: 5000,   // 5s - Camera initialization
   testing_camera: 5000,  // 5s - Camera test
   first_frame: 5000,     // 5s - First frame arrival
-  total: 40000           // 40s total
+  total: 85000           // 85s total
 };
 
 const TIMEOUT_MAC = {
-  startup: 20000,        // 20s - Mac/ARM can be slower
+  startup: 60000,        // 60s - Mac/ARM can be slower
   loading_model: 20000,  // 20s - YOLO model loading on ARM
   camera_opened: 8000,   // 8s - Camera initialization
   testing_camera: 7000,  // 7s - Camera test
   first_frame: 5000,     // 5s - First frame arrival
-  total: 60000           // 60s total
+  total: 105000          // 105s total
 };
 
 // Phase display messages
@@ -48,6 +48,7 @@ export default function DetectionView({
   const [currentPhase, setCurrentPhase] = useState('startup');
   const [phaseStartTime, setPhaseStartTime] = useState(Date.now());
   const [platform, setPlatform] = useState('win32');
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   // Auto-start camera preview when component mounts
   useEffect(() => {
@@ -72,6 +73,20 @@ export default function DetectionView({
     };
   }, []);
 
+  // Update elapsed time every second during initialization
+  useEffect(() => {
+    if (currentPhase !== 'streaming' && !error) {
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - phaseStartTime) / 1000);
+        setElapsedTime(elapsed);
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      setElapsedTime(0);
+    }
+  }, [currentPhase, phaseStartTime, error]);
+
   // Phase-based timeout to detect stuck initialization
   useEffect(() => {
     // Clear any existing timeout
@@ -91,15 +106,35 @@ export default function DetectionView({
         const elapsed = Date.now() - phaseStartTime;
         if (elapsed >= phaseTimeout) {
           const platformName = platform === 'darwin' ? 'Mac' : 'Windows';
+
+          // Phase-specific troubleshooting info
+          const phaseInfo = {
+            startup: "The Python detection script is starting up and loading libraries. This may take longer on first run.",
+            loading_model: "The AI model is being loaded into memory. Large models may take time to initialize.",
+            camera_opened: "Attempting to open and initialize the camera device.",
+            testing_camera: "Testing camera connectivity and frame capture.",
+            first_frame: "Waiting for the first camera frame to arrive."
+          };
+
+          const troubleshootingTips = currentPhase === 'startup'
+            ? "• Check Python is installed and accessible\n" +
+              "• Ensure all dependencies (cv2, ultralytics) are installed\n" +
+              "• Check system logs for Python errors\n" +
+              "• First run may take longer due to model downloads"
+            : "• Camera is connected and working\n" +
+              "• Camera permissions are granted\n" +
+              "• No other application is using the camera\n" +
+              "• Check system logs for detailed errors\n" +
+              "• Try restarting the application";
+
           setError(
             `Initialization timeout during: ${PHASE_MESSAGES[currentPhase] || currentPhase}\n\n` +
-            `Expected: ${phaseTimeout / 1000}s (${platformName})\n` +
+            `${phaseInfo[currentPhase] || ''}\n\n` +
+            `Timeout: ${phaseTimeout / 1000}s (${platformName})\n` +
             `Elapsed: ${Math.floor(elapsed / 1000)}s\n\n` +
-            "Please check:\n" +
-            "• Camera is connected and working\n" +
-            "• Camera permissions are granted\n" +
-            "• No other application is using the camera\n" +
-            "• Try restarting the application"
+            "Troubleshooting:\n" +
+            troubleshootingTips + "\n\n" +
+            "Tip: Check the developer console (F12) for Python error messages"
           );
           setIsRunning(false);
         }
@@ -144,6 +179,7 @@ export default function DetectionView({
 
         // Update phase based on status
         const statusToPhase = {
+          "startup": "startup",
           "loading_model": "loading_model",
           "model_loaded": "model_loaded",
           "camera_opened": "camera_opened",
@@ -302,7 +338,7 @@ export default function DetectionView({
                 <Text
                   x={16}
                   y={16}
-                  text={PHASE_MESSAGES[currentPhase] || "Initializing..."}
+                  text={`${PHASE_MESSAGES[currentPhase] || "Initializing..."} (${elapsedTime}s)`}
                   fontSize={14}
                   fill="#fff"
                   shadowColor="#000"
@@ -312,9 +348,19 @@ export default function DetectionView({
                 <Text
                   x={16}
                   y={40}
-                  text={`Platform: ${platform === 'darwin' ? 'Mac' : 'Windows'} • Phase timeout: ${((platform === 'darwin' ? TIMEOUT_MAC : TIMEOUT_WINDOWS)[currentPhase] || 30000) / 1000}s`}
+                  text={`Platform: ${platform === 'darwin' ? 'Mac' : 'Windows'} • Timeout: ${((platform === 'darwin' ? TIMEOUT_MAC : TIMEOUT_WINDOWS)[currentPhase] || 30000) / 1000}s`}
                   fontSize={11}
                   fill="#aaa"
+                  shadowColor="#000"
+                  shadowBlur={8}
+                  shadowOpacity={0.8}
+                />
+                <Text
+                  x={16}
+                  y={60}
+                  text="Please wait, this may take up to a minute on first run..."
+                  fontSize={11}
+                  fill="#ffaa00"
                   shadowColor="#000"
                   shadowBlur={8}
                   shadowOpacity={0.8}
@@ -322,50 +368,6 @@ export default function DetectionView({
               </>
             )}
 
-            {/* Error message overlay */}
-            {error && (
-              <>
-                {/* Semi-transparent background for error message */}
-                <Rect
-                  x={20}
-                  y={20}
-                  width={width - 40}
-                  height={Math.min(200, height - 40)}
-                  fill="rgba(40, 0, 0, 0.9)"
-                  cornerRadius={8}
-                  stroke="#ff4444"
-                  strokeWidth={2}
-                />
-                {/* Error icon */}
-                <Text
-                  x={width / 2 - 20}
-                  y={40}
-                  text="⚠️"
-                  fontSize={32}
-                />
-                {/* Error title */}
-                <Text
-                  x={40}
-                  y={85}
-                  text="Camera Error"
-                  fontSize={18}
-                  fill="#ff4444"
-                  fontStyle="bold"
-                />
-                {/* Error message - split by newlines */}
-                {error.split('\n').map((line, idx) => (
-                  <Text
-                    key={idx}
-                    x={40}
-                    y={115 + idx * 20}
-                    text={line}
-                    fontSize={13}
-                    fill="#fff"
-                    width={width - 80}
-                  />
-                ))}
-              </>
-            )}
 
             {/* Detection count overlay */}
             {isRunning && detectionData && (
@@ -391,6 +393,65 @@ export default function DetectionView({
             )}
           </Layer>
         </Stage>
+
+        {/* Error overlay - HTML based for better interactivity */}
+        {error && (
+          <div style={{
+            position: 'absolute',
+            top: 20,
+            left: 20,
+            right: 20,
+            maxHeight: height - 40,
+            backgroundColor: 'rgba(40, 0, 0, 0.95)',
+            border: '2px solid #ff4444',
+            borderRadius: 8,
+            padding: 20,
+            color: '#fff',
+            overflowY: 'auto',
+            zIndex: 10
+          }}>
+            <div style={{ textAlign: 'center', fontSize: 32, marginBottom: 10 }}>⚠️</div>
+            <div style={{ fontSize: 18, color: '#ff4444', fontWeight: 'bold', marginBottom: 15 }}>
+              Camera Error
+            </div>
+            <div style={{
+              fontSize: 13,
+              lineHeight: '1.6',
+              whiteSpace: 'pre-line',
+              marginBottom: 20
+            }}>
+              {error}
+            </div>
+            <button
+              onClick={() => {
+                setError(null);
+                setCurrentPhase('startup');
+                setPhaseStartTime(Date.now());
+                if (window.electronAPI) {
+                  window.electronAPI.stopDetection();
+                  setTimeout(() => {
+                    window.electronAPI.startDetection();
+                  }, 500);
+                }
+              }}
+              style={{
+                backgroundColor: '#39ff14',
+                color: '#000',
+                border: 'none',
+                borderRadius: 6,
+                padding: '10px 20px',
+                fontSize: 14,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                width: '100%'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#2ee00f'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#39ff14'}
+            >
+              Retry Detection
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Detection info */}

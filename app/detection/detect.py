@@ -7,6 +7,9 @@ from pathlib import Path
 from ultralytics import YOLO
 
 def main():
+    # Send immediate startup signal to frontend
+    print(json.dumps({"status": "startup", "message": "Python detection script started"}), flush=True)
+
     # Get the directory where this script is located
     script_dir = Path(__file__).parent
     model_path = script_dir / "yolo11n.pt"
