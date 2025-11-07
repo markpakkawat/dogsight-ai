@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
+import { isDetectionInSafeZone } from "../utils/geometry";
 
 // Platform-specific timeout constants (in milliseconds)
 const TIMEOUT_WINDOWS = {
@@ -34,6 +35,7 @@ const PHASE_MESSAGES = {
 export default function DetectionView({
   width = 800,
   height = 450, // 16:9 aspect ratio
+  safeZone = [], // Safe zone polygon for color coding
 }) {
   const imgRef = useRef(null);
   const [detectionData, setDetectionData] = useState(null);
@@ -296,6 +298,22 @@ export default function DetectionView({
               const scaledW = (x2 - x1) * scaleX;
               const scaledH = (y2 - y1) * scaleY;
 
+              // Check if detection is in safe zone
+              const inSafeZone = isDetectionInSafeZone(
+                det,
+                frameSize.width,
+                frameSize.height,
+                safeZone
+              );
+
+              // Dynamic colors based on zone status
+              const boxColor = inSafeZone ? "#39ff14" : "#ff4444";
+              const fillColor = inSafeZone
+                ? "rgba(57, 255, 20, 0.15)"
+                : "rgba(255, 68, 68, 0.15)";
+              const labelBg = inSafeZone ? "#39ff14" : "#ff4444";
+              const labelText = inSafeZone ? "#000" : "#fff";
+
               return (
                 <React.Fragment key={idx}>
                   {/* Bounding box */}
@@ -304,9 +322,9 @@ export default function DetectionView({
                     y={scaledY}
                     width={scaledW}
                     height={scaledH}
-                    stroke="#39ff14"
+                    stroke={boxColor}
                     strokeWidth={3}
-                    fill="rgba(57, 255, 20, 0.15)"
+                    fill={fillColor}
                   />
 
                   {/* Label background */}
@@ -315,7 +333,7 @@ export default function DetectionView({
                     y={scaledY - 24}
                     width={110}
                     height={22}
-                    fill="#39ff14"
+                    fill={labelBg}
                     cornerRadius={4}
                   />
 
@@ -325,7 +343,7 @@ export default function DetectionView({
                     y={scaledY - 20}
                     text={`${det.class} ${(det.confidence * 100).toFixed(0)}%`}
                     fontSize={13}
-                    fill="#000"
+                    fill={labelText}
                     fontStyle="bold"
                   />
                 </React.Fragment>

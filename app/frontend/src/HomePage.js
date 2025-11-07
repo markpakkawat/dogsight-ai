@@ -195,6 +195,7 @@ function HomePage({ lineUserId, onUnpair }) {
         <DetectionView
           width={Math.min(800, window.innerWidth - 64)}
           height={450}
+          safeZone={polygon}
         />
       </div>
 

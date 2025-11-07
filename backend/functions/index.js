@@ -369,7 +369,7 @@ app.get("/check-alert", async (req, res) => {
 // Send dog alert notification
 app.post("/send-dog-alert", async (req, res) => {
   try {
-    const { deviceId, message, timestamp } = req.body;
+    const { deviceId, message, alertType, timestamp } = req.body;
 
     if (!deviceId) {
       return res.status(400).json({ success: false, error: "Missing deviceId" });
@@ -399,24 +399,33 @@ app.post("/send-dog-alert", async (req, res) => {
 
     // Send LINE push notification
     const lineUserId = userData.lineUserId;
-    const alertMessage = `🚨 DOG ALERT 🚨\n\n${message}\n\nTime: ${new Date(timestamp).toLocaleString("en-US", { timeZone: "Asia/Bangkok" })}`;
+
+    // Customize emoji based on alert type
+    let emoji = "🚨";
+    if (alertType === "wandering") emoji = "⚠️";
+    if (alertType === "returned") emoji = "✅";
+    if (alertType === "disappeared") emoji = "🚨";
+
+    const alertMessage = `${emoji} DOG ALERT ${emoji}\n\n${message}\n\nTime: ${new Date(timestamp).toLocaleString("en-US", { timeZone: "Asia/Bangkok" })}`;
 
     await pushText(lineUserId, alertMessage);
 
-    // Log alert (optional - for tracking)
+    // Log alert with alert type (for tracking and analytics)
     await db.collection("alertLogs").add({
       deviceId,
       lineUserId,
       message,
+      alertType: alertType || "general",  // Store alert type
       timestamp: new Date(timestamp),
       sentAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    console.log(`✅ Alert sent to ${lineUserId}: ${message}`);
+    console.log(`✅ ${alertType || "general"} alert sent to ${lineUserId}: ${message}`);
 
     res.json({
       success: true,
       lineUserId,
+      alertType: alertType || "general",
       message: "Alert sent successfully"
     });
 

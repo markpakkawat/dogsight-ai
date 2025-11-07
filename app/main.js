@@ -18,9 +18,19 @@ let alertMonitor = {
   enabled: false,
   deviceId: null,
   lineUserId: null,
-  lastSeenTime: null,
-  alertSent: false,
-  dogCurrentlyMissing: false,
+
+  // Separate tracking for two scenarios
+  lastSeenInZoneTime: null,      // Last time dog was IN safe zone
+  lastSeenAnywhereTime: null,    // Last time dog was detected ANYWHERE
+
+  // Alert flags for each scenario
+  wanderingAlertSent: false,     // Alert sent for "dog outside zone"
+  disappearedAlertSent: false,   // Alert sent for "dog not detected"
+
+  // Current status
+  dogDetected: false,            // Is dog currently detected?
+  dogInZone: false,              // Is dog currently in safe zone?
+
   checkInterval: null,
   safeZone: [],
   apiBaseUrl: null,
@@ -83,7 +93,7 @@ function isDogInSafeZone(detection, frameWidth, frameHeight, safeZone) {
 }
 
 // Send alert notification via Firebase Function
-async function sendAlertNotification(message) {
+async function sendAlertNotification(message, alertType = "general") {
   if (!alertMonitor.apiBaseUrl) {
     console.error("⚠️ API base URL not configured for alerts");
     return;
@@ -97,13 +107,14 @@ async function sendAlertNotification(message) {
       body: JSON.stringify({
         deviceId: alertMonitor.deviceId,
         message: message,
+        alertType: alertType,  // "wandering", "disappeared", "returned", or "general"
         timestamp: new Date().toISOString()
       })
     });
 
     const result = await response.json();
     if (result.success) {
-      console.log("✅ Alert sent successfully to LINE");
+      console.log(`✅ ${alertType} alert sent successfully to LINE`);
     } else {
       console.log("⚠️ Alert not sent:", result.reason || result.error);
     }
@@ -123,9 +134,15 @@ function startAlertMonitoring(config) {
   alertMonitor.lineUserId = lineUserId;
   alertMonitor.safeZone = safeZone || [];
   alertMonitor.apiBaseUrl = apiBaseUrl;
-  alertMonitor.lastSeenTime = Date.now();
-  alertMonitor.alertSent = false;
-  alertMonitor.dogCurrentlyMissing = false;
+
+  // Initialize timing and state
+  const now = Date.now();
+  alertMonitor.lastSeenInZoneTime = now;
+  alertMonitor.lastSeenAnywhereTime = now;
+  alertMonitor.wanderingAlertSent = false;
+  alertMonitor.disappearedAlertSent = false;
+  alertMonitor.dogDetected = false;
+  alertMonitor.dogInZone = false;
 
   // Clear any existing interval
   if (alertMonitor.checkInterval) {
@@ -137,14 +154,33 @@ function startAlertMonitoring(config) {
     if (!alertMonitor.enabled) return;
 
     const now = Date.now();
-    const timeSinceLastSeen = now - alertMonitor.lastSeenTime;
+    const timeSinceInZone = now - (alertMonitor.lastSeenInZoneTime || 0);
+    const timeSinceAnywhere = now - (alertMonitor.lastSeenAnywhereTime || 0);
 
-    // If dog missing for 30+ seconds and alert not sent yet
-    if (timeSinceLastSeen >= 30000 && !alertMonitor.alertSent) {
-      console.log("🚨 Dog missing for 30 seconds! Sending alert...");
-      sendAlertNotification("🚨 Dog has disappeared for 30 seconds!");
-      alertMonitor.alertSent = true;
-      alertMonitor.dogCurrentlyMissing = true;
+    // Priority 1: Dog completely disappeared (not detected at all)
+    // Trigger after 30 seconds of no detection
+    if (timeSinceAnywhere >= 30000 && !alertMonitor.disappearedAlertSent) {
+      console.log("🚨 Dog has completely disappeared! Sending alert...");
+      sendAlertNotification(
+        "🚨 URGENT: Your dog has completely disappeared from the camera view for 30 seconds!",
+        "disappeared"
+      );
+      alertMonitor.disappearedAlertSent = true;
+    }
+    // Priority 2: Dog wandering outside safe zone
+    // Trigger after 30 seconds outside zone (but still visible)
+    // Only if NOT disappeared
+    else if (
+      timeSinceInZone >= 30000 &&
+      !alertMonitor.wanderingAlertSent &&
+      alertMonitor.dogDetected
+    ) {
+      console.log("⚠️ Dog wandering outside safe zone! Sending alert...");
+      sendAlertNotification(
+        "⚠️ WARNING: Your dog has been outside the safe zone for 30 seconds.",
+        "wandering"
+      );
+      alertMonitor.wanderingAlertSent = true;
     }
   }, 5000); // Check every 5 seconds
 
@@ -162,20 +198,29 @@ function stopAlertMonitoring() {
     alertMonitor.checkInterval = null;
   }
 
-  alertMonitor.lastSeenTime = null;
-  alertMonitor.alertSent = false;
-  alertMonitor.dogCurrentlyMissing = false;
+  // Clear all state
+  alertMonitor.lastSeenInZoneTime = null;
+  alertMonitor.lastSeenAnywhereTime = null;
+  alertMonitor.wanderingAlertSent = false;
+  alertMonitor.disappearedAlertSent = false;
+  alertMonitor.dogDetected = false;
+  alertMonitor.dogInZone = false;
 }
 
 // Process detection data for alert monitoring
 function processDetectionForAlert(data) {
   if (!alertMonitor.enabled || !data.detections) return;
 
-  // Check if any dog is inside the safe zone
-  let dogInSafeZone = false;
+  const now = Date.now();
 
-  for (const detection of data.detections) {
-    if (detection.class === "dog") {
+  // Check if any dog is detected (anywhere in frame)
+  const dogDetections = data.detections.filter(d => d.class === "dog");
+  const dogDetected = dogDetections.length > 0;
+
+  // Check if any detected dog is inside the safe zone
+  let dogInSafeZone = false;
+  if (dogDetected) {
+    for (const detection of dogDetections) {
       const inZone = isDogInSafeZone(
         detection,
         data.frame_width,
@@ -190,18 +235,42 @@ function processDetectionForAlert(data) {
     }
   }
 
-  // If dog found in safe zone, update last seen time and reset alert
-  if (dogInSafeZone) {
-    // Check if dog was previously missing - if so, send return notification
-    if (alertMonitor.dogCurrentlyMissing) {
-      console.log("✅ Dog has returned to safe zone! Sending notification...");
-      sendAlertNotification("✅ Good news! Your dog has returned to the safe zone.");
-      alertMonitor.dogCurrentlyMissing = false;
-    }
+  // Update current status
+  alertMonitor.dogDetected = dogDetected;
+  alertMonitor.dogInZone = dogInSafeZone;
 
-    alertMonitor.lastSeenTime = Date.now();
-    alertMonitor.alertSent = false;
+  // Scenario 1: Dog is in safe zone (normal state)
+  if (dogInSafeZone) {
+    alertMonitor.lastSeenInZoneTime = now;
+    alertMonitor.lastSeenAnywhereTime = now;
+
+    // Check if dog was in alert state and send return notification
+    const wasWandering = alertMonitor.wanderingAlertSent;
+    const wasDisappeared = alertMonitor.disappearedAlertSent;
+
+    alertMonitor.wanderingAlertSent = false;
+    alertMonitor.disappearedAlertSent = false;
+
+    if (wasWandering || wasDisappeared) {
+      console.log("✅ Dog has returned to safe zone! Sending notification...");
+      sendAlertNotification(
+        "✅ Good news! Your dog has returned to the safe zone.",
+        "returned"
+      );
+    }
   }
+  // Scenario 2: Dog detected but outside safe zone (wandering)
+  else if (dogDetected) {
+    alertMonitor.lastSeenAnywhereTime = now;
+
+    // If dog was disappeared, it's now wandering - clear disappeared alert
+    if (alertMonitor.disappearedAlertSent) {
+      console.log("🔍 Dog reappeared but is outside the safe zone");
+      alertMonitor.disappearedAlertSent = false;
+    }
+  }
+  // Scenario 3: Dog not detected at all (disappeared)
+  // lastSeenAnywhereTime will become stale, triggering disappeared alert in interval check
 }
 
 // ============================================================================
