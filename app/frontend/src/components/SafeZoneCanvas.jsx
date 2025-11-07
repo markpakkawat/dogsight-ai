@@ -125,16 +125,56 @@ export default function SafeZoneCanvas({
 
       {/* controls */}
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        <button onClick={handleUndo} disabled={!points.length} style={btn()}>
-          ⎌ Undo
+        <button
+          onClick={handleUndo}
+          disabled={!points.length}
+          style={btn(!points.length)}
+          onMouseEnter={(e) => {
+            if (points.length) e.target.style.backgroundColor = '#555';
+          }}
+          onMouseLeave={(e) => {
+            if (points.length) e.target.style.backgroundColor = '#666';
+          }}
+        >
+          ↶ Undo
         </button>
-        <button onClick={handleClear} disabled={!points.length} style={btn()}>
-          🧹 Clear
+        <button
+          onClick={handleClear}
+          disabled={!points.length}
+          style={btnSecondary(!points.length)}
+          onMouseEnter={(e) => {
+            if (points.length) e.target.style.backgroundColor = '#ff2222';
+          }}
+          onMouseLeave={(e) => {
+            if (points.length) e.target.style.backgroundColor = '#ff4444';
+          }}
+        >
+          🗑️ Clear
         </button>
-        <button onClick={handleClose} disabled={closed || points.length < 3} style={btnPrimary(!closed && points.length>=3)}>
-          ✅ Close
+        <button
+          onClick={handleClose}
+          disabled={closed || points.length < 3}
+          style={btnPrimary(!closed && points.length>=3)}
+          onMouseEnter={(e) => {
+            if (!closed && points.length >= 3) e.target.style.backgroundColor = '#0095dd';
+          }}
+          onMouseLeave={(e) => {
+            if (!closed && points.length >= 3) e.target.style.backgroundColor = '#00aaff';
+          }}
+        >
+          ⬢ Close
         </button>
-        <button onClick={handleSave} disabled={!closed || points.length < 3} style={btnPrimary(closed && points.length>=3)}>
+        <button
+          onClick={handleSave}
+          disabled={!closed || points.length < 3}
+          style={btnSave(closed && points.length>=3)}
+          onMouseEnter={(e) => {
+            if (closed && points.length >= 3) e.target.style.backgroundColor = '#2ee00f';
+          }}
+          onMouseLeave={(e) => {
+            if (closed && points.length >= 3) e.target.style.backgroundColor = '#39ff14';
+          }}
+        >
           💾 Save
         </button>
         <div style={{ marginLeft:"auto", fontSize:12, opacity:.8 }}>
@@ -145,12 +185,50 @@ export default function SafeZoneCanvas({
   );
 }
 
-const btn = () => ({ padding:"8px 12px", borderRadius:8, border:"1px solid #333", background:"#1b1b1e", color:"#eaeaea", cursor:"pointer" });
+const btn = (disabled) => ({
+  padding: "8px 16px",
+  borderRadius: 6,
+  border: "none",
+  background: disabled ? "#555" : "#666",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: "bold",
+  cursor: disabled ? "not-allowed" : "pointer",
+  transition: "all 0.2s ease",
+});
+
+const btnSecondary = (disabled) => ({
+  padding: "8px 16px",
+  borderRadius: 6,
+  border: "none",
+  background: disabled ? "#555" : "#ff4444",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: "bold",
+  cursor: disabled ? "not-allowed" : "pointer",
+  transition: "all 0.2s ease",
+});
+
 const btnPrimary = (active) => ({
-  padding:"8px 12px",
-  borderRadius:8,
-  border:"0",
-  background: active ? "#0ea5e9" : "#2a4b57",
-  color:"#fff",
-  cursor:"pointer"
+  padding: "8px 16px",
+  borderRadius: 6,
+  border: "none",
+  background: active ? "#00aaff" : "#555",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: "bold",
+  cursor: active ? "pointer" : "not-allowed",
+  transition: "all 0.2s ease",
+});
+
+const btnSave = (active) => ({
+  padding: "8px 16px",
+  borderRadius: 6,
+  border: "none",
+  background: active ? "#39ff14" : "#555",
+  color: "#000",
+  fontSize: 13,
+  fontWeight: "bold",
+  cursor: active ? "pointer" : "not-allowed",
+  transition: "all 0.2s ease",
 });

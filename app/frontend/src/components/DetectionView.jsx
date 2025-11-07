@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text } from "react-konva";
+import React, { useEffect, useRef, useState, useMemo } from "react";
+import { Stage, Layer, Rect, Text, Line, Circle } from "react-konva";
 import { isDetectionInSafeZone } from "../utils/geometry";
 
 // Platform-specific timeout constants (in milliseconds)
@@ -35,8 +35,9 @@ const PHASE_MESSAGES = {
 export default function DetectionView({
   width = 800,
   height = 450, // 16:9 aspect ratio
-  safeZone = [], // Safe zone polygon for color coding
+  safeZone = [], // Safe zone polygon for color coding (normalized 0-1)
   alertEnabled = false, // Alert monitoring state
+  onSaveZone = null, // Callback to save edited safe zone
 }) {
   const imgRef = useRef(null);
   const [detectionData, setDetectionData] = useState(null);
@@ -52,6 +53,100 @@ export default function DetectionView({
   const [phaseStartTime, setPhaseStartTime] = useState(Date.now());
   const [platform, setPlatform] = useState('win32');
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Safe zone editing state
+  const [editMode, setEditMode] = useState(false);
+  const [points, setPoints] = useState([]); // Pixel coordinates for editing
+  const [isClosed, setIsClosed] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Convert normalized safe zone to pixel coordinates when entering edit mode
+  useEffect(() => {
+    if (editMode && safeZone && safeZone.length > 0) {
+      const pixelPoints = safeZone.map(p => ({
+        x: p.x * width,
+        y: p.y * height
+      }));
+      setPoints(pixelPoints);
+      setIsClosed(safeZone.length >= 3);
+    }
+  }, [editMode, safeZone, width, height]);
+
+  // Convert pixel coordinates to normalized (0-1) for saving
+  const normalizedPoints = useMemo(() => {
+    return points.map(p => ({
+      x: p.x / width,
+      y: p.y / height
+    }));
+  }, [points, width, height]);
+
+  // Polygon editing handlers
+  const handleStageClick = (e) => {
+    if (!editMode || isClosed) return;
+
+    const stage = e.target.getStage();
+    const pointerPos = stage.getPointerPosition();
+
+    setPoints([...points, { x: pointerPos.x, y: pointerPos.y }]);
+  };
+
+  const handlePointDragMove = (index, e) => {
+    const newPoints = [...points];
+    newPoints[index] = {
+      x: e.target.x(),
+      y: e.target.y()
+    };
+    setPoints(newPoints);
+  };
+
+  const handleUndo = () => {
+    if (points.length > 0) {
+      setPoints(points.slice(0, -1));
+      if (points.length <= 3) {
+        setIsClosed(false);
+      }
+    }
+  };
+
+  const handleClear = () => {
+    setPoints([]);
+    setIsClosed(false);
+  };
+
+  const handleClose = () => {
+    if (points.length >= 3) {
+      setIsClosed(true);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!onSaveZone || points.length < 3) return;
+
+    setSaving(true);
+    try {
+      await onSaveZone(normalizedPoints);
+      setEditMode(false);
+    } catch (err) {
+      console.error('Failed to save safe zone:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setPoints([]);
+    setIsClosed(false);
+  };
+
+  const handleEnterEditMode = () => {
+    setEditMode(true);
+    // If no existing safe zone, start fresh
+    if (!safeZone || safeZone.length === 0) {
+      setPoints([]);
+      setIsClosed(false);
+    }
+  };
 
   // Auto-start camera preview when component mounts
   useEffect(() => {
@@ -279,7 +374,7 @@ export default function DetectionView({
           />
         )}
 
-        {/* Konva canvas (overlay layer for detection boxes) */}
+        {/* Konva canvas (overlay layer for detection boxes and safe zone) */}
         <Stage
           width={width}
           height={height}
@@ -287,12 +382,84 @@ export default function DetectionView({
             position: 'absolute',
             top: 0,
             left: 0,
-            pointerEvents: 'none', // Allow clicks to pass through to video
+            pointerEvents: editMode ? 'all' : 'none', // Interactive in edit mode
+            cursor: editMode && !isClosed ? 'crosshair' : 'default',
           }}
+          onClick={handleStageClick}
         >
           <Layer>
-            {/* Status display - only when streaming */}
-            {currentPhase === 'streaming' && detectionData && !error && (() => {
+            {/* Read-only safe zone outline (when not editing) */}
+            {!editMode && safeZone && safeZone.length >= 3 && (() => {
+              const pixelZone = safeZone.map(p => ({ x: p.x * width, y: p.y * height }));
+              const flatPoints = pixelZone.flatMap(p => [p.x, p.y]);
+              return (
+                <Line
+                  points={flatPoints}
+                  stroke="#39ff14"
+                  strokeWidth={2}
+                  closed={true}
+                  fill="rgba(57, 255, 20, 0.1)"
+                  opacity={0.7}
+                />
+              );
+            })()}
+
+            {/* Editable safe zone polygon (when editing) */}
+            {editMode && points.length > 0 && (
+              <>
+                {/* Polygon lines and fill */}
+                <Line
+                  points={points.flatMap(p => [p.x, p.y])}
+                  stroke="#39ff14"
+                  strokeWidth={3}
+                  closed={isClosed}
+                  fill={isClosed ? "rgba(57, 255, 20, 0.15)" : "transparent"}
+                />
+
+                {/* Point handles */}
+                {points.map((point, index) => (
+                  <Circle
+                    key={index}
+                    x={point.x}
+                    y={point.y}
+                    radius={8}
+                    fill="#fff"
+                    stroke="#000"
+                    strokeWidth={2}
+                    draggable={true}
+                    onDragMove={(e) => handlePointDragMove(index, e)}
+                    shadowColor="#000"
+                    shadowBlur={4}
+                    shadowOpacity={0.6}
+                  />
+                ))}
+              </>
+            )}
+            {/* Edit mode instructions overlay */}
+            {editMode && (
+              <>
+                <Rect
+                  x={10}
+                  y={10}
+                  width={Math.min(width - 20, 400)}
+                  height={60}
+                  fill="rgba(0, 0, 0, 0.8)"
+                  cornerRadius={8}
+                />
+                <Text
+                  x={20}
+                  y={20}
+                  width={Math.min(width - 40, 380)}
+                  text={isClosed ? "Polygon closed. Drag white circles to adjust points." : "Click to add points. Drag white circles to adjust. Need 3+ points to close."}
+                  fontSize={13}
+                  fill="#39ff14"
+                  lineHeight={1.4}
+                />
+              </>
+            )}
+
+            {/* Status display - only when streaming and not editing */}
+            {!editMode && currentPhase === 'streaming' && detectionData && !error && (() => {
               // Calculate overall status
               const calculateStatus = () => {
                 // No detections - status depends on alert state
@@ -345,8 +512,8 @@ export default function DetectionView({
               );
             })()}
 
-            {/* Detection boxes */}
-            {detectionData?.detections?.map((det, idx) => {
+            {/* Detection boxes - hide when editing safe zone */}
+            {!editMode && detectionData?.detections?.map((det, idx) => {
               const [x1, y1, x2, y2] = det.bbox;
               const scaledX = x1 * scaleX;
               const scaledY = y1 * scaleY;
@@ -516,10 +683,11 @@ export default function DetectionView({
                 fontSize: 14,
                 fontWeight: 'bold',
                 cursor: 'pointer',
-                width: '100%'
+                width: '100%',
+                transition: 'all 0.2s ease',
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#2ee00f'}
-              onMouseOut={(e) => e.target.style.backgroundColor = '#39ff14'}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#2ee00f'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#39ff14'}
             >
               Retry Detection
             </button>
@@ -527,13 +695,167 @@ export default function DetectionView({
         )}
       </div>
 
-      {/* Detection info */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          {detectionData?.detections?.length > 0 &&
-            `${detectionData.detections.length} dog(s) detected`}
+      {/* Edit Safe Zone Button / Controls */}
+      {!editMode ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+          <button
+            onClick={handleEnterEditMode}
+            disabled={!onSaveZone}
+            style={{
+              backgroundColor: onSaveZone ? '#39ff14' : '#555',
+              color: '#000',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: 'bold',
+              cursor: onSaveZone ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (onSaveZone) e.target.style.backgroundColor = '#2ee00f';
+            }}
+            onMouseLeave={(e) => {
+              if (onSaveZone) e.target.style.backgroundColor = '#39ff14';
+            }}
+          >
+            ✏️ Edit Safe Zone
+          </button>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            {!editMode && detectionData?.detections?.length > 0 &&
+              `${detectionData.detections.length} dog(s) detected`}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          justifyContent: "center",
+          padding: '12px 0',
+          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          borderRadius: 8,
+        }}>
+          <button
+            onClick={handleUndo}
+            disabled={points.length === 0}
+            style={{
+              backgroundColor: points.length === 0 ? '#555' : '#ffaa00',
+              color: '#000',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 'bold',
+              cursor: points.length === 0 ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (points.length > 0) e.target.style.backgroundColor = '#ff9500';
+            }}
+            onMouseLeave={(e) => {
+              if (points.length > 0) e.target.style.backgroundColor = '#ffaa00';
+            }}
+          >
+            ↶ Undo
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={points.length === 0}
+            style={{
+              backgroundColor: points.length === 0 ? '#555' : '#ff4444',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 'bold',
+              cursor: points.length === 0 ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (points.length > 0) e.target.style.backgroundColor = '#ff2222';
+            }}
+            onMouseLeave={(e) => {
+              if (points.length > 0) e.target.style.backgroundColor = '#ff4444';
+            }}
+          >
+            🗑️ Clear
+          </button>
+          <button
+            onClick={handleClose}
+            disabled={points.length < 3 || isClosed}
+            style={{
+              backgroundColor: (points.length < 3 || isClosed) ? '#555' : '#00aaff',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 'bold',
+              cursor: (points.length < 3 || isClosed) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (points.length >= 3 && !isClosed) e.target.style.backgroundColor = '#0095dd';
+            }}
+            onMouseLeave={(e) => {
+              if (points.length >= 3 && !isClosed) e.target.style.backgroundColor = '#00aaff';
+            }}
+          >
+            ⬢ Close Polygon
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={points.length < 3 || saving}
+            style={{
+              backgroundColor: (points.length < 3 || saving) ? '#555' : '#39ff14',
+              color: '#000',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 'bold',
+              cursor: (points.length < 3 || saving) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (points.length >= 3 && !saving) e.target.style.backgroundColor = '#2ee00f';
+            }}
+            onMouseLeave={(e) => {
+              if (points.length >= 3 && !saving) e.target.style.backgroundColor = '#39ff14';
+            }}
+          >
+            {saving ? '⏳ Saving...' : '💾 Save'}
+          </button>
+          <button
+            onClick={handleCancelEdit}
+            disabled={saving}
+            style={{
+              backgroundColor: '#666',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 'bold',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!saving) e.target.style.backgroundColor = '#555';
+            }}
+            onMouseLeave={(e) => {
+              if (!saving) e.target.style.backgroundColor = '#666';
+            }}
+          >
+            ✖️ Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

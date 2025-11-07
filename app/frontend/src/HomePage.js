@@ -143,16 +143,21 @@ function HomePage({ lineUserId, onUnpair }) {
         <button
           onClick={handleUnpair}
           style={{
-            padding: '8px 16px',
+            padding: '10px 20px',
             backgroundColor: '#ff4444',
-            color: 'white',
+            color: '#fff',
             border: 'none',
-            borderRadius: '4px',
+            borderRadius: 6,
+            fontSize: 14,
+            fontWeight: 'bold',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            transition: 'all 0.2s ease',
           }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#ff2222'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#ff4444'}
         >
           <span>🔓</span>
           Unpair Device
@@ -197,6 +202,7 @@ function HomePage({ lineUserId, onUnpair }) {
           height={450}
           safeZone={polygon}
           alertEnabled={enabled}
+          onSaveZone={save}
         />
       </div>
 
