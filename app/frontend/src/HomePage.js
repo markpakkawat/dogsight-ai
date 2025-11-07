@@ -196,6 +196,7 @@ function HomePage({ lineUserId, onUnpair }) {
           width={Math.min(800, window.innerWidth - 64)}
           height={450}
           safeZone={polygon}
+          alertEnabled={enabled}
         />
       </div>
 

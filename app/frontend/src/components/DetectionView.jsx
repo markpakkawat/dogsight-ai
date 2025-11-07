@@ -36,6 +36,7 @@ export default function DetectionView({
   width = 800,
   height = 450, // 16:9 aspect ratio
   safeZone = [], // Safe zone polygon for color coding
+  alertEnabled = false, // Alert monitoring state
 }) {
   const imgRef = useRef(null);
   const [detectionData, setDetectionData] = useState(null);
@@ -290,6 +291,60 @@ export default function DetectionView({
           }}
         >
           <Layer>
+            {/* Status display - only when streaming */}
+            {currentPhase === 'streaming' && detectionData && !error && (() => {
+              // Calculate overall status
+              const calculateStatus = () => {
+                // No detections - status depends on alert state
+                if (!detectionData?.detections || detectionData.detections.length === 0) {
+                  if (alertEnabled) {
+                    // Alert ON: Urgent "Disappear" status
+                    return { status: 'Disappear', color: '#ff4444' };
+                  } else {
+                    // Alert OFF: Neutral "Not detected" status
+                    return { status: 'Not detected', color: '#888888' };
+                  }
+                }
+
+                // Dog(s) detected - check safe zone (regardless of alert state)
+                const anyOutside = detectionData.detections.some(det =>
+                  !isDetectionInSafeZone(det, frameSize.width, frameSize.height, safeZone)
+                );
+
+                return anyOutside
+                  ? { status: 'Outside', color: '#ff4444' }
+                  : { status: 'Inside', color: '#39ff14' };
+              };
+
+              const { status, color } = calculateStatus();
+
+              return (
+                <>
+                  {/* Background for status */}
+                  <Rect
+                    x={10}
+                    y={10}
+                    width={200}
+                    height={40}
+                    fill="rgba(0, 0, 0, 0.7)"
+                    cornerRadius={8}
+                  />
+                  {/* Status text */}
+                  <Text
+                    x={20}
+                    y={22}
+                    text={`Status: ${status}`}
+                    fontSize={18}
+                    fill={color}
+                    fontStyle="bold"
+                    shadowColor="#000"
+                    shadowBlur={8}
+                    shadowOpacity={0.8}
+                  />
+                </>
+              );
+            })()}
+
             {/* Detection boxes */}
             {detectionData?.detections?.map((det, idx) => {
               const [x1, y1, x2, y2] = det.bbox;
