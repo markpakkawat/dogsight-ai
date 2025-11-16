@@ -359,12 +359,85 @@ app.get("/check-alert", async (req, res) => {
 
   } catch (err) {
     console.error("Check alert error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: "Internal server error" 
+    res.status(500).json({
+      success: false,
+      error: "Internal server error"
     });
   }
 });
+
+// Send dog alert notification
+app.post("/send-dog-alert", async (req, res) => {
+  try {
+    const { deviceId, message, alertType, timestamp } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, error: "Missing deviceId" });
+    }
+
+    // Find user by deviceId
+    const snapshot = await db
+      .collection("users")
+      .where("deviceId", "==", deviceId)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: "Device not found" });
+    }
+
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Check if alerts are enabled
+    if (!userData.alertEnabled) {
+      return res.json({
+        success: false,
+        reason: "Alerts disabled"
+      });
+    }
+
+    // Send LINE push notification
+    const lineUserId = userData.lineUserId;
+
+    // Customize emoji based on alert type
+    let emoji = "🚨";
+    if (alertType === "wandering") emoji = "⚠️";
+    if (alertType === "returned") emoji = "✅";
+    if (alertType === "disappeared") emoji = "🚨";
+
+    const alertMessage = `${emoji} DOG ALERT ${emoji}\n\n${message}\n\nTime: ${new Date(timestamp).toLocaleString("en-US", { timeZone: "Asia/Bangkok" })}`;
+
+    await pushText(lineUserId, alertMessage);
+
+    // Log alert with alert type (for tracking and analytics)
+    await db.collection("alertLogs").add({
+      deviceId,
+      lineUserId,
+      message,
+      alertType: alertType || "general",  // Store alert type
+      timestamp: new Date(timestamp),
+      sentAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`✅ ${alertType || "general"} alert sent to ${lineUserId}: ${message}`);
+
+    res.json({
+      success: true,
+      lineUserId,
+      alertType: alertType || "general",
+      message: "Alert sent successfully"
+    });
+
+  } catch (err) {
+    console.error("❌ Send alert error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error"
+    });
+  }
+});
+
 /* ---------------------- Link creation (callable API) ---------------------- */
 
 exports.createWatchLink = functions.https.onCall(async (data, ctx) => {

@@ -36,13 +36,26 @@ export default function AlertToggle({ deviceId, enabled, onStateChange, isOnline
         onClick={handleToggle}
         disabled={loading || !isOnline}
         style={{
-          padding: "0.5rem 1rem",
-          backgroundColor: enabled ? "green" : "gray",
-          color: "white",
+          padding: "10px 20px",
+          backgroundColor: enabled ? "#39ff14" : "#666",
+          color: enabled ? "#000" : "#fff",
           border: "none",
-          borderRadius: "6px",
-          cursor: "pointer",
-          opacity: !isOnline ? 0.6 : 1
+          borderRadius: 6,
+          fontSize: 14,
+          fontWeight: "bold",
+          cursor: (loading || !isOnline) ? "not-allowed" : "pointer",
+          opacity: !isOnline ? 0.6 : 1,
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          if (!loading && isOnline) {
+            e.target.style.backgroundColor = enabled ? "#2ee00f" : "#555";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!loading && isOnline) {
+            e.target.style.backgroundColor = enabled ? "#39ff14" : "#666";
+          }
         }}
       >
         {loading ? "⏳ Updating..." : enabled ? "✅ Alerts ON" : "❌ Alerts OFF"}
