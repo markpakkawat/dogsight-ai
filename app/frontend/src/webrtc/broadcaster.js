@@ -16,11 +16,26 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-const DEFAULT_ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  // Strongly recommended in prod:
-  // { urls: "turn:your-turn.example.com:3478", username: "user", credential: "pass" },
-];
+// Build ICE servers from environment variables
+const buildIceServers = () => {
+  const servers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  // Add TURN server if configured
+  if (process.env.REACT_APP_TURN_URL) {
+    servers.push({
+      urls: process.env.REACT_APP_TURN_URL,
+      username: process.env.REACT_APP_TURN_USERNAME || "",
+      credential: process.env.REACT_APP_TURN_CREDENTIAL || "",
+    });
+  }
+
+  return servers;
+};
+
+const DEFAULT_ICE_SERVERS = buildIceServers();
 
 /**
  * Start broadcasting the local camera to a viewer session.
@@ -36,11 +51,33 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
   const iceServers = options.iceServers || DEFAULT_ICE_SERVERS;
   const mediaConstraints = options.media || { video: true, audio: false };
 
+  // Pause Python detection to release camera
+  if (window.electronAPI && window.electronAPI.stopDetection) {
+    console.log("🎥 [1/4] Pausing AI detection to release camera...");
+    window.electronAPI.stopDetection();
+    // Wait a moment for Python to release the camera
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  console.log("🎥 [2/4] Initializing WebRTC peer connection...");
   const pc = new RTCPeerConnection({ iceServers });
 
   // 1) Capture camera
-  const local = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-  local.getTracks().forEach((t) => pc.addTrack(t, local));
+  console.log("🎥 [3/4] Requesting camera access...");
+  let local;
+  try {
+    local = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    console.log("✅ Camera acquired successfully");
+    local.getTracks().forEach((t) => pc.addTrack(t, local));
+  } catch (error) {
+    console.error("❌ Failed to get camera:", error);
+    // Resume detection if camera access fails
+    if (window.electronAPI && window.electronAPI.startDetection) {
+      console.log("🔄 Resuming detection after camera error...");
+      window.electronAPI.startDetection();
+    }
+    throw error;
+  }
 
   // 2) Publish host ICE candidates to Firestore
   pc.onicecandidate = async (e) => {
@@ -56,10 +93,12 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
   };
 
   // 3) Create initial offer
+  console.log("🎥 [4/4] Setting up WebRTC connection...");
   const sessionRef = doc(db, "streams", userId, "sessions", sessionId);
   const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false });
   await pc.setLocalDescription(offer);
 
+  console.log("📤 Publishing stream offer to Firestore...");
   // (Nice to have) clean slate fields for this session + mark open
   await setDoc(
     sessionRef,
@@ -72,6 +111,8 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
     },
     { merge: true }
   );
+
+  console.log("🎉 Broadcast setup complete! Waiting for viewers...");
 
   // 4) Listen for viewer answer and viewer ICE candidates
   let lastAnswerSdp = null;
@@ -88,6 +129,7 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
         lastAnswerSdp = data.answer.sdp;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          console.log("👀 Viewer connected! Establishing connection...");
         } catch (e) {
           console.warn("setRemoteDescription (initial) failed", e);
         }
@@ -133,9 +175,37 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
     pc,
     local,
     stop: () => {
-      try { unsub && unsub(); } catch {}
-      try { pc && pc.close(); } catch {}
-      try { local && local.getTracks().forEach((t) => t.stop()); } catch {}
+      console.log("🛑 Stopping broadcast...");
+
+      try {
+        unsub && unsub();
+        console.log("✓ Firestore listener unsubscribed");
+      } catch (e) {
+        console.warn("Error unsubscribing:", e);
+      }
+
+      try {
+        pc && pc.close();
+        console.log("✓ WebRTC connection closed");
+      } catch (e) {
+        console.warn("Error closing peer connection:", e);
+      }
+
+      try {
+        local && local.getTracks().forEach((t) => t.stop());
+        console.log("✓ Camera released");
+      } catch (e) {
+        console.warn("Error stopping tracks:", e);
+      }
+
+      // Resume Python detection after streaming ends
+      if (window.electronAPI && window.electronAPI.startDetection) {
+        console.log("🔄 Resuming AI detection...");
+        setTimeout(() => {
+          window.electronAPI.startDetection();
+          console.log("✅ Detection resumed");
+        }, 500); // Small delay to ensure camera is fully released
+      }
     },
   };
 }

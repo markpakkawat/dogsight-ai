@@ -67,3 +67,5 @@ node_modules/
 
 # firebase-service-account
 firebase-service-account.json
+
+.DS_Store

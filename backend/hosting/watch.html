@@ -65,7 +65,13 @@
     const functions = firebase.app().functions('us-central1');
     const call = (name, payload) => functions.httpsCallable(name)(payload).then(r => r.data);
 
-    const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+    const iceServers = [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      // TURN server for internet streaming (free public TURN server)
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+    ];
 
     const parts = location.pathname.split('/').filter(Boolean);
     const userId    = parts[1];

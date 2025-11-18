@@ -38,6 +38,8 @@ export default function DetectionView({
   safeZone = [], // Safe zone polygon for color coding (normalized 0-1)
   alertEnabled = false, // Alert monitoring state
   onSaveZone = null, // Callback to save edited safe zone
+  streamStatus = null, // Streaming status from parent (optional)
+  onStopStreaming = null, // Callback to stop streaming (optional)
 }) {
   const imgRef = useRef(null);
   const [detectionData, setDetectionData] = useState(null);
@@ -47,6 +49,7 @@ export default function DetectionView({
   const [currentFrame, setCurrentFrame] = useState(null);
   const [initializationStarted, setInitializationStarted] = useState(false);
   const timeoutRef = useRef(null);
+  const [stoppingStream, setStoppingStream] = useState(false);
 
   // Phase tracking for multi-phase timeout
   const [currentPhase, setCurrentPhase] = useState('startup');
@@ -147,6 +150,26 @@ export default function DetectionView({
       setIsClosed(false);
     }
   };
+
+  // Handle stop streaming button click with loading state
+  const handleStopClick = async () => {
+    if (!onStopStreaming) return;
+    setStoppingStream(true);
+    try {
+      await onStopStreaming();
+    } catch (error) {
+      console.error('Failed to stop streaming:', error);
+      setStoppingStream(false); // Reset on error
+    }
+    // Don't reset here - let useEffect handle it when streamStatus changes
+  };
+
+  // Reset stopping state when stream actually stops
+  useEffect(() => {
+    if (streamStatus?.status !== 'active') {
+      setStoppingStream(false);
+    }
+  }, [streamStatus]);
 
   // Auto-start camera preview when component mounts
   useEffect(() => {
@@ -691,6 +714,108 @@ export default function DetectionView({
             >
               Retry Detection
             </button>
+          </div>
+        )}
+
+        {/* Streaming status overlay - shows when streaming or preparing */}
+        {streamStatus && streamStatus.status !== 'idle' && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor:
+              streamStatus.status === 'active' ? 'rgba(33, 150, 243, 0.95)' :
+              streamStatus.status === 'error' ? 'rgba(244, 67, 54, 0.95)' :
+              streamStatus.status === 'stopping' ? 'rgba(255, 152, 0, 0.95)' :
+              'rgba(156, 39, 176, 0.95)',
+            borderBottom: `3px solid ${
+              streamStatus.status === 'active' ? '#2196f3' :
+              streamStatus.status === 'error' ? '#f44336' :
+              streamStatus.status === 'stopping' ? '#ff9800' :
+              '#9c27b0'
+            }`,
+            padding: '12px 16px',
+            color: '#fff',
+            zIndex: 5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+              <div style={{ fontSize: '24px' }}>
+                {streamStatus.status === 'active' ? '🎥' :
+                 streamStatus.status === 'error' ? '❌' :
+                 streamStatus.status === 'stopping' ? '⏹️' :
+                 '⏳'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '2px' }}>
+                  {streamStatus.status === 'requested' ? 'Stream Requested' :
+                   streamStatus.status === 'preparing' ? 'Preparing Camera...' :
+                   streamStatus.status === 'starting' ? 'Starting Broadcast...' :
+                   streamStatus.status === 'active' ? 'Streaming - Detection Paused' :
+                   streamStatus.status === 'stopping' ? 'Stopping Stream...' :
+                   streamStatus.status === 'switching' ? 'Switching Streams...' :
+                   streamStatus.status === 'error' ? 'Stream Error' :
+                   'Processing...'}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  {streamStatus.message}
+                </div>
+              </div>
+            </div>
+            {streamStatus.status === 'active' && onStopStreaming && (
+              <button
+                onClick={handleStopClick}
+                disabled={stoppingStream}
+                style={{
+                  backgroundColor: stoppingStream ? '#e0e0e0' : '#fff',
+                  color: stoppingStream ? '#999' : '#2196f3',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  fontWeight: 'bold',
+                  cursor: stoppingStream ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  opacity: stoppingStream ? 0.7 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!stoppingStream) {
+                    e.target.style.backgroundColor = '#f0f0f0';
+                    e.target.style.transform = 'scale(1.05)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!stoppingStream) {
+                    e.target.style.backgroundColor = '#fff';
+                    e.target.style.transform = 'scale(1)';
+                  }
+                }}
+              >
+                {stoppingStream ? (
+                  <>
+                    <div style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid #999',
+                      borderTop: '2px solid transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                    Stopping...
+                  </>
+                ) : (
+                  <>⏹️ Stop Stream</>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -242,7 +242,7 @@ app.post("/line-webhook", async (req, res) => {
             expiresAt,
             hostRequested: true,      // Electron watcher will see this and start
             hostActive: false,
-            lastViewerPing: now,      // viewer will keep this fresh
+            // lastViewerPing will be set when viewer first connects (via viewerPing function)
             candidatesHost: [],
             candidatesViewer: [],
           },
@@ -461,7 +461,7 @@ exports.createWatchLink = functions.https.onCall(async (data, ctx) => {
         // Signal Electron to auto-start
         hostRequested: true,
         hostActive: false,
-        lastViewerPing: now,
+        // lastViewerPing will be set when viewer first connects (via viewerPing function)
         candidatesHost: [],
         candidatesViewer: [],
       },
@@ -578,6 +578,7 @@ exports.getSignaling = functions.https.onCall(async (data) => {
  * postAnswer
  * Input: { tokenId, userId, sessionId, answer }
  * Output: { ok: true }
+ * Note: Supports multiple viewers by storing answer in backwards-compatible way
  */
 exports.postAnswer = functions.https.onCall(async (data) => {
   const { tokenId, userId, sessionId, answer } = data || {};
@@ -585,7 +586,15 @@ exports.postAnswer = functions.https.onCall(async (data) => {
     throw new functions.https.HttpsError("invalid-argument", "Missing answer or ids.");
   }
   const { sessionRef } = await _checkWatchToken({ tokenId, userId, sessionId });
-  await sessionRef.set({ answer }, { merge: true });
+
+  // Store the answer (backwards compatible - last answer wins for now)
+  // Future enhancement: store per-viewer answers for true multi-viewer support
+  await sessionRef.set({
+    answer,
+    lastAnswerTokenId: tokenId,
+    lastAnswerTime: admin.firestore.Timestamp.now()
+  }, { merge: true });
+
   return { ok: true };
 });
 
