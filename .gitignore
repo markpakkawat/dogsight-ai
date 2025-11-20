@@ -1,3 +1,26 @@
+# Service account credentials
 serviceAccountKey.json
+
+# Dependencies
 node_modules
+backend/node_modules/
+backend/functions/node_modules/
+app/node_modules/
+
+# Environment files (global protection)
+**/.env
+**/.env.local
+**/.env.*.local
+.env
+.env.local
+.env.*.local
+
+# Claude Code settings
+.claude/
+
+# OS files
 .DS_Store
+**/.DS_Store
+
+# Built Electron app
+app/dist/
