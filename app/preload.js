@@ -30,6 +30,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   startAlertMonitoring: (config) => ipcRenderer.send("start-alert-monitoring", config),
   stopAlertMonitoring: () => ipcRenderer.send("stop-alert-monitoring"),
 
+  // Camera configuration
+  getCameraConfig: () => ipcRenderer.invoke("get-camera-config"),
+  saveCameraConfig: (config) => ipcRenderer.invoke("save-camera-config", config),
+
   // Platform detection
   getPlatform: () => process.platform,
 });

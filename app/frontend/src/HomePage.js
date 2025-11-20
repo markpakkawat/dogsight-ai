@@ -5,6 +5,7 @@ import { doc, onSnapshot, getDoc, deleteDoc, setDoc } from "firebase/firestore";
 import AlertToggle from "./components/AlertToggle";
 import SafeZoneCanvas from "./components/SafeZoneCanvas";
 import DetectionView from "./components/DetectionView";
+import CameraSettings from "./components/CameraSettings";
 import { useSafeZone } from "./hooks/useSafeZone";
 import { watchLiveSessions } from "./webrtc/liveService";
 
@@ -294,6 +295,18 @@ function HomePage({ lineUserId, onUnpair }) {
         onStateChange={setEnabled}
         isOnline={isOnline}
       />
+
+      {/* Camera Settings section */}
+      <h3 style={{ marginTop: 30 }}>📹 Camera Settings</h3>
+      <div style={{
+        marginTop: 16,
+        border: '1px solid #ccc',
+        borderRadius: 8,
+        padding: 16,
+        backgroundColor: '#fff',
+      }}>
+        <CameraSettings db={db} lineUserId={lineUserId} />
+      </div>
 
       {/* Detection View section */}
       <h3 style={{ marginTop: 30 }}>🐶 Dog Detection</h3>

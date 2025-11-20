@@ -5,6 +5,7 @@ const path = require("path");
 let detectionProcess = null;
 let mainWindow = null;
 let pythonErrorReceived = false; // Track if Python sent a specific error
+let cameraSource = "0"; // Default camera source (0 = USB webcam, or RTSP URL)
 
 // Helper function to safely send messages to renderer
 function safelySendToRenderer(channel, data) {
@@ -529,8 +530,8 @@ function startDetection() {
   } else if (fs.existsSync(detectPyPath)) {
     // Fall back to Python script (use python3 on Mac, python on Windows)
     detectionCommand = process.platform === "darwin" ? "python3" : "python";
-    detectionArgs = [detectPyPath];
-    console.log(`🐶 Using Python script for detection (${detectionCommand})`);
+    detectionArgs = [detectPyPath, "--source", cameraSource];
+    console.log(`🐶 Using Python script for detection (${detectionCommand}) with camera source: ${cameraSource}`);
   } else {
     console.error("⚠️ Detection script not found");
     safelySendToRenderer("detection-error", {
@@ -649,6 +650,22 @@ ipcMain.on("start-alert-monitoring", (event, config) => {
 ipcMain.on("stop-alert-monitoring", () => {
   console.log("🔕 Stop alert monitoring requested");
   stopAlertMonitoring();
+});
+
+// Camera configuration handlers
+ipcMain.handle("get-camera-config", async () => {
+  console.log("📹 Get camera config requested");
+  return { source: cameraSource };
+});
+
+ipcMain.handle("save-camera-config", async (_event, config) => {
+  console.log("💾 Save camera config requested:", config);
+  if (config && config.source !== undefined) {
+    cameraSource = config.source;
+    console.log("✅ Camera source updated to:", cameraSource);
+    return { success: true };
+  }
+  return { success: false, error: "Invalid config" };
 });
 
 // Cleanup on app quit

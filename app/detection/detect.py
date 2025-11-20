@@ -8,6 +8,7 @@ import sys
 import time
 import base64
 import torch
+import argparse
 from pathlib import Path
 from ultralytics import YOLO
 import threading
@@ -18,11 +19,30 @@ import math
 # ------------------------------
 class VideoStream:
     def __init__(self, src=0, width=640, height=480, fps=30):
+        self.src = src
         self.cap = cv2.VideoCapture(src)
+
+        # RTSP-specific optimizations
+        if isinstance(src, str) and (src.startswith('rtsp://') or src.startswith('http://')):
+            # Reduce buffer to minimize latency for IP cameras
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            # Set timeouts for RTSP connections
+            self.cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)  # 10 second timeout
+            self.cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
+
+        # Set resolution and FPS (may not work for all RTSP cameras)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
+
+        # Check if camera opened successfully
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Failed to open camera source: {src}")
+
         self.ret, self.frame = self.cap.read()
+        if not self.ret or self.frame is None:
+            raise RuntimeError(f"Failed to read initial frame from camera source: {src}")
+
         self.stopped = False
         threading.Thread(target=self.update, daemon=True).start()
 
@@ -66,8 +86,20 @@ def ema_smooth(old_bbox, new_bbox, alpha):
 # Main detection loop
 # ------------------------------
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='YOLO Dog Detection with RTSP/Webcam support')
+    parser.add_argument('--source', default='0',
+                       help='Camera source: 0 for default webcam, or RTSP URL (e.g., rtsp://192.168.1.100:554/stream)')
+    args = parser.parse_args()
+
+    # Convert source to appropriate type
+    if args.source.isdigit():
+        camera_source = int(args.source)
+    else:
+        camera_source = args.source
+
     print(json.dumps({"status": "startup",
-                      "message": "Python detection script started"}), flush=True)
+                      "message": f"Python detection script started with source: {camera_source}"}), flush=True)
 
     # Model path
     script_dir = Path(__file__).parent
@@ -87,10 +119,15 @@ def main():
         sys.exit(1)
 
     # Initialize threaded camera
-    vs = VideoStream(width=640, height=480, fps=30)
-    time.sleep(1)  # allow camera to warm up
-    print(json.dumps({"status": "camera_ready",
-                      "message": "Camera initialized"}), flush=True)
+    try:
+        vs = VideoStream(src=camera_source, width=640, height=480, fps=30)
+        time.sleep(1)  # allow camera to warm up
+        print(json.dumps({"status": "camera_ready",
+                          "message": f"Camera initialized successfully: {camera_source}"}), flush=True)
+    except Exception as e:
+        print(json.dumps({"error": "camera_init_failed",
+                          "message": f"Failed to initialize camera: {str(e)}"}), flush=True)
+        sys.exit(1)
 
     # Tracker state and parameters
     tracked = []  # list of dicts: {"id": int, "bbox": [x1,y1,x2,y2], "class": ..., "confidence": ..., "age": 0, "hits": n}

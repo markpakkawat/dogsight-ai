@@ -5,20 +5,20 @@ import { isDetectionInSafeZone } from "../utils/geometry";
 // Platform-specific timeout constants (in milliseconds)
 const TIMEOUT_WINDOWS = {
   startup: 60000,        // 60s - Python startup + library imports (cv2, ultralytics)
-  loading_model: 10000,  // 10s - YOLO model loading
+  loading_model: 60000,  // 60s - YOLO model loading
   camera_opened: 5000,   // 5s - Camera initialization
   testing_camera: 5000,  // 5s - Camera test
   first_frame: 5000,     // 5s - First frame arrival
-  total: 85000           // 85s total
+  total: 135000          // 135s total
 };
 
 const TIMEOUT_MAC = {
   startup: 60000,        // 60s - Mac/ARM can be slower
-  loading_model: 20000,  // 20s - YOLO model loading on ARM
+  loading_model: 60000,  // 60s - YOLO model loading on ARM
   camera_opened: 8000,   // 8s - Camera initialization
   testing_camera: 7000,  // 7s - Camera test
   first_frame: 5000,     // 5s - First frame arrival
-  total: 105000          // 105s total
+  total: 145000          // 145s total
 };
 
 // Phase display messages
@@ -316,6 +316,7 @@ export default function DetectionView({
       } else if (data.detections !== undefined) {
         // First frame received - now streaming
         setInitializationStarted(true);
+        setIsRunning(true);  // Ensure isRunning is true when frames arrive
         if (currentPhase !== 'streaming') {
           setCurrentPhase('streaming');
           setPhaseStartTime(Date.now());
@@ -327,6 +328,7 @@ export default function DetectionView({
         // Update current frame if frame data is included
         if (data.frame_data) {
           setCurrentFrame(`data:image/jpeg;base64,${data.frame_data}`);
+          setIsRunning(true);  // Ensure isRunning is true when frame data arrives
         }
       }
     });
@@ -381,7 +383,9 @@ export default function DetectionView({
         backgroundColor: '#0f0f10'
       }}>
         {/* Image element (background layer - displays frames from Python) */}
-        {currentFrame && (
+        {currentFrame &&
+         (!streamStatus || streamStatus.status !== 'active') &&
+         isRunning && (
           <img
             ref={imgRef}
             src={currentFrame}
