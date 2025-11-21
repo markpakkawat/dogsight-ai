@@ -92,6 +92,36 @@ export async function startBroadcast(db, userId, sessionId, options = {}) {
     }
   };
 
+  // Monitor ICE connection state for immediate disconnect detection
+  pc.oniceconnectionstatechange = () => {
+    console.log('ICE Connection State:', pc.iceConnectionState);
+    if (pc.iceConnectionState === 'disconnected' ||
+        pc.iceConnectionState === 'failed' ||
+        pc.iceConnectionState === 'closed') {
+      console.log('⚠️ Viewer disconnected (ICE state), closing session...');
+      // Close session in Firestore immediately
+      const sessionRef = doc(db, "streams", userId, "sessions", sessionId);
+      setDoc(sessionRef, { status: 'closed' }, { merge: true })
+        .then(() => console.log('✅ Session closed due to ICE connection loss'))
+        .catch(err => console.error('Failed to close session:', err));
+    }
+  };
+
+  // Monitor overall connection state for immediate disconnect detection
+  pc.onconnectionstatechange = () => {
+    console.log('Connection State:', pc.connectionState);
+    if (pc.connectionState === 'disconnected' ||
+        pc.connectionState === 'failed' ||
+        pc.connectionState === 'closed') {
+      console.log('⚠️ Viewer disconnected (connection state), closing session...');
+      // Close session in Firestore immediately
+      const sessionRef = doc(db, "streams", userId, "sessions", sessionId);
+      setDoc(sessionRef, { status: 'closed' }, { merge: true })
+        .then(() => console.log('✅ Session closed due to connection loss'))
+        .catch(err => console.error('Failed to close session:', err));
+    }
+  };
+
   // 3) Create initial offer
   console.log("🎥 [4/4] Setting up WebRTC connection...");
   const sessionRef = doc(db, "streams", userId, "sessions", sessionId);

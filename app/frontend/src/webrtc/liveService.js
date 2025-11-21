@@ -36,7 +36,7 @@ export function watchLiveSessions(db, userId, onStatusChange = null) {
 
       emitStatus("active", "Stream is live! Viewers can now watch.");
 
-      // stop if viewer heartbeat goes stale (>2 minutes)
+      // stop if viewer heartbeat goes stale (>30 seconds)
       // This gives users time to receive and click the link
       clearInterval(heartbeatTimer);
       heartbeatTimer = setInterval(async () => {
@@ -44,12 +44,12 @@ export function watchLiveSessions(db, userId, onStatusChange = null) {
         const data = snap.data() || {};
         const last = data.lastViewerPing?.toMillis?.() || 0;
         // Only check if lastViewerPing exists (viewer has connected)
-        if (last > 0 && Date.now() - last > 120000) {
+        if (last > 0 && Date.now() - last > 30000) {  // 30 seconds (reduced from 2 minutes)
           console.log("Viewer heartbeat stale, closing session");
           emitStatus("stopping", "No viewers detected, stopping stream...");
           await setDoc(sessionRef, { status: "closed" }, { merge: true });
         }
-      }, 5000);
+      }, 3000);  // Check every 3 seconds (matches viewer ping frequency)
     } catch (error) {
       console.error("Failed to start broadcast:", error);
       emitStatus("error", `Failed to start stream: ${error.message}`);

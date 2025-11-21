@@ -72,7 +72,16 @@ export default function CameraSettings({ db, lineUserId }) {
         );
       }
 
-      setMessage("✅ Camera settings saved! Restart detection to apply changes.");
+      setMessage("✅ Camera settings saved! Restarting detection with new camera...");
+
+      // Automatically restart detection to apply new camera settings
+      if (window.electronAPI?.stopDetection && window.electronAPI?.startDetection) {
+        window.electronAPI.stopDetection();
+        setTimeout(() => {
+          window.electronAPI.startDetection();
+          setMessage("✅ Camera settings applied! Detection restarted successfully.");
+        }, 500);
+      }
     } catch (error) {
       console.error("Failed to save camera config:", error);
       setMessage("❌ Failed to save camera settings");
