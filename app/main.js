@@ -5,7 +5,7 @@ const path = require("path");
 let detectionProcess = null;
 let mainWindow = null;
 let pythonErrorReceived = false; // Track if Python sent a specific error
-let cameraSource = "0"; // Default camera source (0 = USB webcam, or RTSP URL)
+const cameraSource = "0"; // Default camera source (always use camera 0)
 
 // Helper function to safely send messages to renderer
 function safelySendToRenderer(channel, data) {
@@ -650,22 +650,6 @@ ipcMain.on("start-alert-monitoring", (event, config) => {
 ipcMain.on("stop-alert-monitoring", () => {
   console.log("🔕 Stop alert monitoring requested");
   stopAlertMonitoring();
-});
-
-// Camera configuration handlers
-ipcMain.handle("get-camera-config", async () => {
-  console.log("📹 Get camera config requested");
-  return { source: cameraSource };
-});
-
-ipcMain.handle("save-camera-config", async (_event, config) => {
-  console.log("💾 Save camera config requested:", config);
-  if (config && config.source !== undefined) {
-    cameraSource = config.source;
-    console.log("✅ Camera source updated to:", cameraSource);
-    return { success: true };
-  }
-  return { success: false, error: "Invalid config" };
 });
 
 // Cleanup on app quit

@@ -1,20 +1,17 @@
 // /app/frontend/src/HomePage.js
 import React, { useEffect, useState } from "react";
 import { db } from "./firebase";
-import { doc, onSnapshot, getDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, deleteDoc } from "firebase/firestore";
 import AlertToggle from "./components/AlertToggle";
 import SafeZoneCanvas from "./components/SafeZoneCanvas";
 import DetectionView from "./components/DetectionView";
-import CameraSettings from "./components/CameraSettings";
 import { useSafeZone } from "./hooks/useSafeZone";
-import { watchLiveSessions } from "./webrtc/liveService";
 
 // Add onUnpair to the component props
 function HomePage({ lineUserId, onUnpair }) {
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
-  const [streamStatus, setStreamStatus] = useState({ status: "idle", message: "" });
 
   const [deviceId] = useState(() => {
     let id = localStorage.getItem("deviceId");
@@ -117,22 +114,6 @@ function HomePage({ lineUserId, onUnpair }) {
     };
   }, [enabled, isOnline, lineUserId, deviceId, polygon]);
 
-  // Live streaming session watcher
-  useEffect(() => {
-    if (!lineUserId) return;
-
-    console.log("📡 Starting live session watcher for user:", lineUserId);
-    const cleanup = watchLiveSessions(db, lineUserId, (status) => {
-      setStreamStatus(status);
-    });
-
-    return () => {
-      console.log("📡 Stopping live session watcher");
-      cleanup();
-      setStreamStatus({ status: "idle", message: "" });
-    };
-  }, [lineUserId]);
-
   const handleUnpair = async () => {
     if (window.confirm("Are you sure you want to unpair? This will remove all settings.")) {
       try {
@@ -148,31 +129,6 @@ function HomePage({ lineUserId, onUnpair }) {
         console.error("Failed to unpair:", error);
         alert("Failed to unpair. Please try again.");
       }
-    }
-  };
-
-  const handleStopStreaming = async () => {
-    try {
-      // Find the active session and close it
-      const { collection: firestoreCollection, query: firestoreQuery, where: firestoreWhere, orderBy: firestoreOrderBy, limit: firestoreLimit, getDocs } = await import("firebase/firestore");
-      const sessionsRef = firestoreCollection(db, "streams", lineUserId, "sessions");
-      const q = firestoreQuery(
-        sessionsRef,
-        firestoreWhere("status", "==", "open"),
-        firestoreOrderBy("createdAt", "desc"),
-        firestoreLimit(1)
-      );
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        const sessionDoc = snapshot.docs[0];
-        await setDoc(doc(db, "streams", lineUserId, "sessions", sessionDoc.id), {
-          status: "closed"
-        }, { merge: true });
-        console.log("✅ Stream stopped manually");
-      }
-    } catch (error) {
-      console.error("Failed to stop streaming:", error);
     }
   };
 
@@ -220,74 +176,6 @@ function HomePage({ lineUserId, onUnpair }) {
         {isOnline ? '🟢 Connected' : '🔴 Offline - Check your internet connection'}
       </div>
 
-      {/* Streaming status indicator */}
-      {streamStatus.status !== "idle" && (
-        <div style={{
-          padding: '12px 16px',
-          marginBottom: '20px',
-          backgroundColor:
-            streamStatus.status === 'active' ? '#e3f2fd' :
-            streamStatus.status === 'error' ? '#ffebee' :
-            streamStatus.status === 'stopping' ? '#fff3e0' :
-            '#f3e5f5',
-          borderRadius: '8px',
-          border: `2px solid ${
-            streamStatus.status === 'active' ? '#2196f3' :
-            streamStatus.status === 'error' ? '#f44336' :
-            streamStatus.status === 'stopping' ? '#ff9800' :
-            '#9c27b0'
-          }`,
-          color: '#000',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          animation: streamStatus.status !== 'active' && streamStatus.status !== 'error' ? 'pulse 2s infinite' : 'none'
-        }}>
-          <div style={{ fontSize: '24px' }}>
-            {streamStatus.status === 'active' ? '🎥' :
-             streamStatus.status === 'error' ? '❌' :
-             streamStatus.status === 'stopping' ? '⏹️' :
-             '⏳'}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
-              {streamStatus.status === 'requested' ? 'Stream Requested' :
-               streamStatus.status === 'preparing' ? 'Preparing Camera...' :
-               streamStatus.status === 'starting' ? 'Starting Broadcast...' :
-               streamStatus.status === 'active' ? 'Streaming Active' :
-               streamStatus.status === 'stopping' ? 'Stopping Stream...' :
-               streamStatus.status === 'switching' ? 'Switching Streams...' :
-               streamStatus.status === 'error' ? 'Stream Error' :
-               'Processing...'}
-            </div>
-            <div style={{ fontSize: '14px', opacity: 0.8 }}>
-              {streamStatus.message}
-            </div>
-          </div>
-          {streamStatus.status !== 'active' && streamStatus.status !== 'error' && (
-            <div className="spinner" style={{
-              width: '20px',
-              height: '20px',
-              border: '3px solid rgba(0,0,0,0.1)',
-              borderTop: '3px solid #9c27b0',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }} />
-          )}
-        </div>
-      )}
-
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-      `}</style>
-
       <h3 style={{ marginTop: 30 }}>🔘 Alert Controls</h3>
       <AlertToggle
         deviceId={deviceId}
@@ -295,18 +183,6 @@ function HomePage({ lineUserId, onUnpair }) {
         onStateChange={setEnabled}
         isOnline={isOnline}
       />
-
-      {/* Camera Settings section */}
-      <h3 style={{ marginTop: 30 }}>📹 Camera Settings</h3>
-      <div style={{
-        marginTop: 16,
-        border: '1px solid #ccc',
-        borderRadius: 8,
-        padding: 16,
-        backgroundColor: '#fff',
-      }}>
-        <CameraSettings db={db} lineUserId={lineUserId} />
-      </div>
 
       {/* Detection View section */}
       <h3 style={{ marginTop: 30 }}>🐶 Dog Detection</h3>
@@ -327,8 +203,6 @@ function HomePage({ lineUserId, onUnpair }) {
           safeZone={polygon}
           alertEnabled={enabled}
           onSaveZone={save}
-          streamStatus={streamStatus}
-          onStopStreaming={handleStopStreaming}
         />
       </div>
 
