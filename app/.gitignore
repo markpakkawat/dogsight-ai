@@ -73,3 +73,5 @@ firebase-service-account.json
 
 # dist folder
 /dist
+
+.DS_Store

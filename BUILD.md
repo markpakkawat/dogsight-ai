@@ -26,7 +26,7 @@ This creates `app/detection/detect.exe`
 
 **After compilation, move the YOLO model:**
 ```bash
-copy yolo11n.pt detect.exe
+copy yolo11s.pt detect.exe
 ```
 (The model file must be in the same directory as the executable)
 
@@ -42,11 +42,11 @@ This creates `app/detection/detect` (executable with no extension)
 
 **After compilation, ensure the YOLO model is in the same directory:**
 ```bash
-cp yolo11n.pt detect
+cp yolo11s.pt detect
 ```
 (The model file must be in the same directory as the executable)
 
-**Note**: The compiled executable must include the YOLO model file (`yolo11n.pt`) in the same directory.
+**Note**: The compiled executable must include the YOLO model file (`yolo11s.pt`) in the same directory.
 
 ### 2. Build React Frontend
 
@@ -122,7 +122,7 @@ Zip the `app/dist/DogSightAI-darwin-x64/DogSightAI.app` and distribute.
 
 **Important**: Make sure to include:
 - The compiled detection executable (`detect.exe` or `detect`)
-- The YOLO model file (`yolo11n.pt`)
+- The YOLO model file (`yolo11s.pt`)
 - All required dependencies
 
 ## Development Mode (Without Compilation)
@@ -158,7 +158,7 @@ pip install -r requirements.txt
 - Try running with administrator/sudo privileges
 
 ### Model file not found
-- Ensure `yolo11n.pt` is in `app/detection/` directory (same location as detect.exe or detect)
+- Ensure `yolo11s.pt` is in `app/detection/` directory (same location as detect.exe or detect)
 - The model file must be in the same directory as the compiled executable
 
 ## Notes
