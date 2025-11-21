@@ -1,1 +1,0 @@
-# testing Drawing function to define detection zone in polygon
