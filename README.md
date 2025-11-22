@@ -69,7 +69,7 @@ dogsight-ai/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/dogsight-ai.git
+git clone https://github.com/markpakkawat/dogsight-ai.git
 cd dogsight-ai
 ```
 
@@ -97,30 +97,6 @@ cd app
 npm install
 npm start
 ```
-
-## Building for Distribution
-
-For detailed build instructions including Python script compilation and platform-specific packaging, see [BUILD.md](BUILD.md).
-
-### Quick Build (Windows)
-
-```bash
-# 1. Compile Python detection script
-cd app/detection
-pip install pyinstaller
-pyinstaller --onefile --name detect --distpath . detect.py
-
-# 2. Build frontend
-cd ../frontend
-npm install
-npm run build
-
-# 3. Package Electron app
-cd ..
-npm install
-npx electron-packager . DogSightAI --platform=win32 --arch=x64 --out=dist --overwrite
-```
-
 ## Configuration
 
 ### Firebase Setup
@@ -162,6 +138,31 @@ REACT_APP_FIREBASE_APP_ID=your_app_id
 # Backend API URL (if applicable)
 REACT_APP_API_URL=http://localhost:5001
 ```
+
+
+## Building for Distribution
+
+For detailed build instructions including Python script compilation and platform-specific packaging, see [BUILD.md](BUILD.md).
+
+### Quick Build (Windows)
+
+```bash
+# 1. Compile Python detection script
+cd app/detection
+pip install pyinstaller
+pyinstaller --onefile --name detect --distpath . detect.py
+
+# 2. Build frontend
+cd ../frontend
+npm install
+npm run build
+
+# 3. Package Electron app
+cd ..
+npm install
+npx electron-packager . DogSightAI --platform=win32 --arch=x64 --out=dist --overwrite
+```
+
 
 ## How It Works
 
